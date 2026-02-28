@@ -895,6 +895,47 @@ export async function generateEmbedding(_text: string): Promise<number[] | null>
 
 ---
 
+### 43. CI/CD исправления
+
+**Проблема 1:** `prettier-plugin-tailwindcss` не найден
+```
+Cannot find package 'prettier-plugin-tailwindcss'
+```
+
+**Решение:**
+```bash
+npm install -D prettier-plugin-tailwindcss
+npm run format  # исправлено форматирование в 36 файлах
+```
+
+**Проблема 2:** `@vitest/coverage-v8` не найден
+```
+MISSING DEPENDENCY Cannot find dependency '@vitest/coverage-v8'
+```
+
+**Решение:**
+```bash
+npm install -D @vitest/coverage-v8@^3.0.0
+```
+
+---
+
+### 44. GitHub репозиторий
+
+**Репозиторий:** https://github.com/knopka87/lumie-ai
+
+**Обновлён README.md:**
+- Исправлен URL для `git clone`
+- Обновлено описание Embeddings (серверная генерация)
+- Добавлена ссылка на GitHub Issues
+
+**CI/CD статус:** Все проверки проходят
+- ✅ Tests
+- ✅ Lint & Format
+- ✅ Build
+
+---
+
 ### Статус проекта (финальный)
 
 | Метрика | Значение |
@@ -902,6 +943,7 @@ export async function generateEmbedding(_text: string): Promise<number[] | null>
 | Тестов | 126 |
 | Build | ✅ Успешно |
 | TypeCheck | ✅ Без ошибок |
+| CI/CD | ✅ GitHub Actions |
 | Миграции БД | ✅ 6 миграций |
 | Векторная БД | ✅ Только сервер (sqlite-vss + JS fallback) |
 | Windows Support | ✅ Полная поддержка |
@@ -909,3 +951,4 @@ export async function generateEmbedding(_text: string): Promise<number[] | null>
 | Rate Limit | ✅ Обработка 429 |
 | Favicon | ✅ 💡 |
 | Размер бандла | ✅ Оптимизирован (-15MB) |
+| Репозиторий | https://github.com/knopka87/lumie-ai |
