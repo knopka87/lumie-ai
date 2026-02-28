@@ -1,0 +1,5 @@
+{
+  "name": "Lumie AI",
+  "description": "Your warm and intelligent language companion. Lumie helps you master new languages through natural conversations, personalized feedback, and persistent learning memory.",
+  "requestFramePermissions": ["microphone"]
+}
