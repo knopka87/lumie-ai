@@ -43,7 +43,7 @@ npm --version    # должно показать 9 или выше
 ### Шаг 2: Скачайте проект
 
 ```bash
-git clone https://github.com/your-repo/lumie-ai.git
+git clone https://github.com/knopka87/lumie-ai.git
 cd lumie-ai
 ```
 
@@ -155,7 +155,7 @@ lumie-ai/
 - **Frontend:** React, TypeScript, Tailwind CSS, Framer Motion
 - **Backend:** Express.js, SQLite, sqlite-vss (векторный поиск)
 - **AI:** Google Gemini API, Gemini Live API (голос)
-- **Embeddings:** all-MiniLM-L6-v2 (локально через Xenova/transformers)
+- **Embeddings:** all-MiniLM-L6-v2 (серверная генерация)
 
 ---
 
@@ -183,4 +183,4 @@ MIT
 
 ## Контакты
 
-Если есть вопросы — создайте Issue на GitHub.
+Если есть вопросы — создайте [Issue на GitHub](https://github.com/knopka87/lumie-ai/issues).
