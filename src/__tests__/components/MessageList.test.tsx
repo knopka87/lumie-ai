@@ -6,13 +6,13 @@ import { createMockMessage, createMockConversationHistory } from '../helpers';
 // Mock framer-motion
 vi.mock('motion/react', () => ({
   motion: {
-    div: ({ children, ...props }: any) => <div {...props}>{children}</div>
-  }
+    div: ({ children, ...props }: any) => <div {...props}>{children}</div>,
+  },
 }));
 
 // Mock i18n
 vi.mock('../../i18n', () => ({
-  t: (key: string) => key
+  t: (key: string) => key,
 }));
 
 // Mock scrollIntoView

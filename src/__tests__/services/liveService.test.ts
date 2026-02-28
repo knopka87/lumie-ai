@@ -100,10 +100,10 @@ describe('AudioRecorder (via GeminiLiveService)', () => {
     Object.defineProperty(navigator, 'mediaDevices', {
       value: {
         getUserMedia: vi.fn().mockResolvedValue({
-          getTracks: () => [{ stop: vi.fn() }]
-        })
+          getTracks: () => [{ stop: vi.fn() }],
+        }),
       },
-      writable: true
+      writable: true,
     });
   });
 
@@ -124,7 +124,7 @@ describe('AudioRecorder (via GeminiLiveService)', () => {
       onmessage: null as any,
       onerror: null as any,
       onclose: null as any,
-      readyState: 1
+      readyState: 1,
     };
 
     global.WebSocket = vi.fn().mockImplementation(() => mockWs) as any;
@@ -134,7 +134,7 @@ describe('AudioRecorder (via GeminiLiveService)', () => {
       onInterrupted: vi.fn(),
       onTranscription: vi.fn(),
       onError: vi.fn(),
-      onClose: vi.fn()
+      onClose: vi.fn(),
     };
 
     try {

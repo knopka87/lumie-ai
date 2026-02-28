@@ -14,7 +14,7 @@ export function createMockUser(overrides: Partial<User> = {}): User {
     points: 100,
     streak: 5,
     is_onboarded: true,
-    ...overrides
+    ...overrides,
   };
 }
 
@@ -29,7 +29,7 @@ export function createMockMessage(overrides: Partial<Message> = {}): Message {
     content: 'Hello! How can I help you today?',
     type: 'text',
     created_at: new Date().toISOString(),
-    ...overrides
+    ...overrides,
   };
 }
 
@@ -42,7 +42,7 @@ export function createMockConversation(overrides: Partial<Conversation> = {}): C
     user_id: 'test-user-123',
     title: 'Test Conversation',
     created_at: new Date().toISOString(),
-    ...overrides
+    ...overrides,
   };
 }
 
@@ -55,7 +55,7 @@ export function createMockMemory(overrides: Partial<Memory> = {}): Memory {
     user_id: 'test-user-123',
     topic: 'test-topic',
     summary: 'This is a test memory',
-    ...overrides
+    ...overrides,
   };
 }
 
@@ -68,7 +68,7 @@ export function createMockTopic(overrides: Partial<Topic> = {}): Topic {
     title: 'Present Simple',
     description: 'Learn about present simple tense',
     category: 'grammar',
-    ...overrides
+    ...overrides,
   };
 }
 
@@ -80,21 +80,21 @@ export function createMockLessonData(overrides: Partial<LessonData> = {}): Lesso
     theory: 'The present simple tense is used for habits and facts.',
     vocabulary: [
       { word: 'always', translation: 'всегда' },
-      { word: 'never', translation: 'никогда' }
+      { word: 'never', translation: 'никогда' },
     ],
     examples: [
       { text: 'I always wake up at 7 AM.', translation: 'Я всегда просыпаюсь в 7 утра.' },
-      { text: 'She never eats meat.', translation: 'Она никогда не ест мясо.' }
+      { text: 'She never eats meat.', translation: 'Она никогда не ест мясо.' },
     ],
     exercises: [
       {
         question: 'Choose the correct form: She ___ to school every day.',
         options: ['go', 'goes', 'going', 'went'],
         answer: 'goes',
-        explanation: 'With he/she/it, we add -s or -es to the base verb.'
-      }
+        explanation: 'With he/she/it, we add -s or -es to the base verb.',
+      },
     ],
-    ...overrides
+    ...overrides,
   };
 }
 
@@ -104,12 +104,14 @@ export function createMockLessonData(overrides: Partial<LessonData> = {}): Lesso
 export function createMockConversationHistory(count = 4): Message[] {
   const messages: Message[] = [];
   for (let i = 0; i < count; i++) {
-    messages.push(createMockMessage({
-      id: i + 1,
-      role: i % 2 === 0 ? 'assistant' : 'user',
-      content: i % 2 === 0 ? `AI message ${i + 1}` : `User message ${i + 1}`,
-      created_at: new Date(Date.now() - (count - i) * 60000).toISOString()
-    }));
+    messages.push(
+      createMockMessage({
+        id: i + 1,
+        role: i % 2 === 0 ? 'assistant' : 'user',
+        content: i % 2 === 0 ? `AI message ${i + 1}` : `User message ${i + 1}`,
+        created_at: new Date(Date.now() - (count - i) * 60000).toISOString(),
+      })
+    );
   }
   return messages;
 }
@@ -136,11 +138,19 @@ export function createMockLocalStorage(): Storage {
 
   return {
     getItem: (key: string) => store[key] || null,
-    setItem: (key: string, value: string) => { store[key] = value; },
-    removeItem: (key: string) => { delete store[key]; },
-    clear: () => { store = {}; },
+    setItem: (key: string, value: string) => {
+      store[key] = value;
+    },
+    removeItem: (key: string) => {
+      delete store[key];
+    },
+    clear: () => {
+      store = {};
+    },
     key: (index: number) => Object.keys(store)[index] || null,
-    get length() { return Object.keys(store).length; }
+    get length() {
+      return Object.keys(store).length;
+    },
   };
 }
 
@@ -156,19 +166,19 @@ export function createMockSpeechRecognition() {
     onstart: null as (() => void) | null,
     onerror: null as ((event: unknown) => void) | null,
     onend: null as (() => void) | null,
-    start: function() {
+    start: function () {
       if (this.onstart) this.onstart();
     },
-    stop: function() {
+    stop: function () {
       if (this.onend) this.onend();
     },
-    abort: function() {
+    abort: function () {
       if (this.onend) this.onend();
     },
     simulateResult(transcript: string) {
       if (this.onresult) {
         this.onresult({
-          results: [[{ transcript, confidence: 0.95 }]]
+          results: [[{ transcript, confidence: 0.95 }]],
         });
       }
     },
@@ -176,7 +186,7 @@ export function createMockSpeechRecognition() {
       if (this.onerror) {
         this.onerror({ error });
       }
-    }
+    },
   };
 }
 
@@ -188,16 +198,16 @@ export function setupSpeechRecognitionMock() {
 
   Object.defineProperty(window, 'webkitSpeechRecognition', {
     writable: true,
-    value: function() {
+    value: function () {
       return createMockSpeechRecognition();
-    }
+    },
   });
 
   Object.defineProperty(window, 'SpeechRecognition', {
     writable: true,
-    value: function() {
+    value: function () {
       return createMockSpeechRecognition();
-    }
+    },
   });
 
   return mockRecognition;

@@ -1,4 +1,4 @@
-import { GoogleGenAI, LiveServerMessage, Modality } from "@google/genai";
+import { GoogleGenAI, LiveServerMessage, Modality } from '@google/genai';
 
 export interface LiveServiceCallbacks {
   onAudioData: (base64Audio: string) => void;
@@ -37,7 +37,7 @@ export class PCMAudioPlayer {
       const pcmData = new Int16Array(bytes.buffer);
       const floatData = new Float32Array(pcmData.length);
       for (let i = 0; i < pcmData.length; i++) {
-        floatData[i] = pcmData[i] / 0x7FFF;
+        floatData[i] = pcmData[i] / 0x7fff;
       }
 
       const buffer = this.audioContext.createBuffer(1, floatData.length, this.sampleRate);
@@ -109,7 +109,7 @@ class AudioRecorder {
           channelCount: 1,
           echoCancellation: true,
           noiseSuppression: true,
-        }
+        },
       });
 
       this.audioContext = new AudioContext({ sampleRate: this.sampleRate });
@@ -129,9 +129,11 @@ class AudioRecorder {
       // Fallback to ScriptProcessor (deprecated but widely supported)
       this.setupScriptProcessor();
     } catch (err: any) {
-      console.error("Failed to start recording:", err);
+      console.error('Failed to start recording:', err);
       if (err.name === 'NotAllowedError' || err.name === 'PermissionDeniedError') {
-        throw new Error('Microphone access denied. Please allow microphone access in your browser settings.');
+        throw new Error(
+          'Microphone access denied. Please allow microphone access in your browser settings.'
+        );
       }
       throw err;
     }
@@ -188,7 +190,7 @@ class AudioRecorder {
 
       this.workletNode = new AudioWorkletNode(this.audioContext, 'pcm-processor');
 
-      this.workletNode.port.onmessage = (event) => {
+      this.workletNode.port.onmessage = event => {
         if (this.onAudioData) {
           const pcmBuffer = event.data as ArrayBuffer;
           const base64 = this.arrayBufferToBase64(pcmBuffer);
@@ -211,7 +213,7 @@ class AudioRecorder {
     // Using larger buffer size to reduce CPU usage
     this.scriptProcessor = this.audioContext.createScriptProcessor(4096, 1, 1);
 
-    this.scriptProcessor.onaudioprocess = (e) => {
+    this.scriptProcessor.onaudioprocess = e => {
       if (!this.onAudioData) return;
 
       const inputData = e.inputBuffer.getChannelData(0);
@@ -219,7 +221,7 @@ class AudioRecorder {
       // Convert Float32 to Int16 PCM
       const pcmData = new Int16Array(inputData.length);
       for (let i = 0; i < inputData.length; i++) {
-        pcmData[i] = Math.max(-1, Math.min(1, inputData[i])) * 0x7FFF;
+        pcmData[i] = Math.max(-1, Math.min(1, inputData[i])) * 0x7fff;
       }
 
       const base64 = this.arrayBufferToBase64(pcmData.buffer);
@@ -288,7 +290,10 @@ export class GeminiLiveService {
     this.ai = new GoogleGenAI({ apiKey });
   }
 
-  async connect(config: { systemInstruction: string }, callbacks: LiveServiceCallbacks): Promise<void> {
+  async connect(
+    config: { systemInstruction: string },
+    callbacks: LiveServiceCallbacks
+  ): Promise<void> {
     if (this.isConnected) {
       console.warn('Already connected, disconnecting first');
       this.disconnect();
@@ -296,11 +301,11 @@ export class GeminiLiveService {
 
     try {
       this.session = await this.ai.live.connect({
-        model: "gemini-2.5-flash-native-audio-preview-09-2025",
+        model: 'gemini-2.5-flash-native-audio-preview-09-2025',
         config: {
           responseModalities: [Modality.AUDIO],
           speechConfig: {
-            voiceConfig: { prebuiltVoiceConfig: { voiceName: "Puck" } },
+            voiceConfig: { prebuiltVoiceConfig: { voiceName: 'Puck' } },
           },
           systemInstruction: config.systemInstruction,
           outputAudioTranscription: {},
@@ -328,7 +333,9 @@ export class GeminiLiveService {
             }
 
             // Handle Model Transcription
-            const modelTranscription = message.serverContent?.modelTurn?.parts?.find(p => p.text)?.text;
+            const modelTranscription = message.serverContent?.modelTurn?.parts?.find(
+              p => p.text
+            )?.text;
             if (modelTranscription) {
               callbacks.onTranscription(modelTranscription, true, 'model');
             }
@@ -339,7 +346,7 @@ export class GeminiLiveService {
               callbacks.onTranscription(userTranscription, true, 'user');
             }
           },
-          onerror: (err) => {
+          onerror: err => {
             console.error('Gemini Live error:', err);
             callbacks.onError(err);
           },
@@ -358,11 +365,11 @@ export class GeminiLiveService {
   private async startRecording(): Promise<void> {
     this.recorder = new AudioRecorder(16000);
 
-    await this.recorder.start((base64Data) => {
+    await this.recorder.start(base64Data => {
       if (this.session && this.isConnected) {
         try {
           this.session.sendRealtimeInput({
-            media: { data: base64Data, mimeType: 'audio/pcm;rate=16000' }
+            media: { data: base64Data, mimeType: 'audio/pcm;rate=16000' },
           });
         } catch (err) {
           console.error('Error sending audio data:', err);
@@ -383,7 +390,7 @@ export class GeminiLiveService {
       try {
         this.session.close();
       } catch (e) {
-        console.warn("Error closing session:", e);
+        console.warn('Error closing session:', e);
       }
       this.session = null;
     }

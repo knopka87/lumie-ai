@@ -6,11 +6,11 @@ vi.mock('@google/genai', () => ({
   GoogleGenAI: vi.fn().mockImplementation(() => ({
     models: {
       generateContent: vi.fn(),
-      generateContentStream: vi.fn()
-    }
+      generateContentStream: vi.fn(),
+    },
   })),
   Modality: { AUDIO: 'audio', TEXT: 'text' },
-  Type: { ARRAY: 'array', OBJECT: 'object', STRING: 'string' }
+  Type: { ARRAY: 'array', OBJECT: 'object', STRING: 'string' },
 }));
 
 // Mock generateSpeech
@@ -18,14 +18,14 @@ vi.mock('../../services/geminiService', () => ({
   generateSpeech: vi.fn(async (text: string) => {
     if (!text) return null;
     return { data: 'bW9ja19kYXRh', format: 'wav' };
-  })
+  }),
 }));
 
 import { useTTS, extractSentences } from '../../hooks/useTTS';
 
 // Mock pcmToWav
 vi.mock('../../lib/utils', () => ({
-  pcmToWav: vi.fn((data: string) => 'converted_wav_data')
+  pcmToWav: vi.fn((data: string) => 'converted_wav_data'),
 }));
 
 describe('useTTS', () => {

@@ -10,10 +10,10 @@ vi.mock('../../i18n', () => ({
       'error.description': 'An unexpected error occurred. Please try again or reload the page.',
       'error.details': 'Error details',
       'error.tryAgain': 'Try Again',
-      'error.reload': 'Reload'
+      'error.reload': 'Reload',
     };
     return translations[key] || key;
-  }
+  },
 }));
 
 // Component that throws an error
@@ -108,7 +108,7 @@ describe('ErrorBoundary', () => {
     const reloadMock = vi.fn();
     Object.defineProperty(window, 'location', {
       value: { reload: reloadMock },
-      writable: true
+      writable: true,
     });
 
     render(

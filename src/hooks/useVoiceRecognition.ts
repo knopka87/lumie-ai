@@ -19,18 +19,20 @@ interface UseVoiceRecognitionReturn {
 }
 
 const LANG_MAP: Record<string, string> = {
-  'English': 'en-US',
-  'Russian': 'ru-RU',
-  'Spanish': 'es-ES',
-  'French': 'fr-FR',
-  'German': 'de-DE',
-  'Italian': 'it-IT',
-  'Chinese': 'zh-CN',
-  'Japanese': 'ja-JP',
-  'Portuguese': 'pt-BR',
+  English: 'en-US',
+  Russian: 'ru-RU',
+  Spanish: 'es-ES',
+  French: 'fr-FR',
+  German: 'de-DE',
+  Italian: 'it-IT',
+  Chinese: 'zh-CN',
+  Japanese: 'ja-JP',
+  Portuguese: 'pt-BR',
 };
 
-export function useVoiceRecognition(options: UseVoiceRecognitionOptions = {}): UseVoiceRecognitionReturn {
+export function useVoiceRecognition(
+  options: UseVoiceRecognitionOptions = {}
+): UseVoiceRecognitionReturn {
   const [isListening, setIsListening] = useState(false);
   const [isSupported, setIsSupported] = useState(true);
   const [micPermission, setMicPermission] = useState<'prompt' | 'granted' | 'denied'>('prompt');
@@ -46,7 +48,8 @@ export function useVoiceRecognition(options: UseVoiceRecognitionOptions = {}): U
       return;
     }
 
-    const SpeechRecognition = (window as any).webkitSpeechRecognition || (window as any).SpeechRecognition;
+    const SpeechRecognition =
+      (window as any).webkitSpeechRecognition || (window as any).SpeechRecognition;
     const recognition = new SpeechRecognition();
 
     recognition.continuous = options.continuous ?? false;
@@ -97,7 +100,8 @@ export function useVoiceRecognition(options: UseVoiceRecognitionOptions = {}): U
   // Check microphone permission
   useEffect(() => {
     if (navigator.permissions && navigator.permissions.query) {
-      navigator.permissions.query({ name: 'microphone' as PermissionName })
+      navigator.permissions
+        .query({ name: 'microphone' as PermissionName })
         .then(permissionStatus => {
           setMicPermission(permissionStatus.state as any);
           permissionStatus.onchange = () => {
@@ -123,7 +127,7 @@ export function useVoiceRecognition(options: UseVoiceRecognitionOptions = {}): U
       setMicPermission('granted');
       return true;
     } catch (err: any) {
-      console.error("Permission request failed:", err);
+      console.error('Permission request failed:', err);
       setMicPermission('denied');
       if (err.name === 'NotAllowedError' || err.name === 'PermissionDeniedError') {
         optionsRef.current.onError?.('Microphone access denied');
@@ -134,7 +138,7 @@ export function useVoiceRecognition(options: UseVoiceRecognitionOptions = {}): U
 
   const startListening = useCallback(async () => {
     if (!isSupported || !recognitionRef.current) {
-      console.warn("Speech recognition not supported");
+      console.warn('Speech recognition not supported');
       return;
     }
 
@@ -148,7 +152,7 @@ export function useVoiceRecognition(options: UseVoiceRecognitionOptions = {}): U
     try {
       recognitionRef.current.start();
     } catch (err: any) {
-      console.error("Failed to start recognition:", err);
+      console.error('Failed to start recognition:', err);
       if (err.name === 'NotAllowedError') {
         setMicPermission('denied');
         optionsRef.current.onError?.('Microphone access denied');
@@ -184,6 +188,6 @@ export function useVoiceRecognition(options: UseVoiceRecognitionOptions = {}): U
     stopListening,
     toggleListening,
     requestPermission,
-    setLanguage
+    setLanguage,
   };
 }

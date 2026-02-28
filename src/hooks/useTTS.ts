@@ -49,7 +49,7 @@ export function useTTS(): UseTTSReturn {
           processAudioQueue();
         }
       } catch (err) {
-        console.error("TTS synthesis error:", err);
+        console.error('TTS synthesis error:', err);
       }
     }
 
@@ -82,7 +82,7 @@ export function useTTS(): UseTTSReturn {
     try {
       await audioRef.current.play();
     } catch (err) {
-      console.error("Audio playback failed:", err);
+      console.error('Audio playback failed:', err);
       isPlayingRef.current = false;
       setIsSpeaking(false);
       // Try next in queue
@@ -105,7 +105,7 @@ export function useTTS(): UseTTSReturn {
     };
 
     const handleError = () => {
-      console.error("Audio error occurred");
+      console.error('Audio error occurred');
       isPlayingRef.current = false;
       setIsSpeaking(false);
       // Try next in queue
@@ -124,17 +124,20 @@ export function useTTS(): UseTTSReturn {
   }, [processAudioQueue]);
 
   // Queue text for TTS
-  const queueText = useCallback((text: string) => {
-    if (!text.trim()) return;
+  const queueText = useCallback(
+    (text: string) => {
+      if (!text.trim()) return;
 
-    // Filter out junk
-    if (text.length <= 1 || !/[a-zA-Zа-яА-Я0-9]/.test(text)) {
-      return;
-    }
+      // Filter out junk
+      if (text.length <= 1 || !/[a-zA-Zа-яА-Я0-9]/.test(text)) {
+        return;
+      }
 
-    textQueueRef.current.push(text);
-    processTextQueue();
-  }, [processTextQueue]);
+      textQueueRef.current.push(text);
+      processTextQueue();
+    },
+    [processTextQueue]
+  );
 
   // Speak text immediately (clears queue first)
   const speakImmediate = useCallback(async (text: string) => {
@@ -170,7 +173,7 @@ export function useTTS(): UseTTSReturn {
         await audioRef.current.play();
       }
     } catch (err) {
-      console.error("TTS error:", err);
+      console.error('TTS error:', err);
     } finally {
       setIsProcessing(false);
     }
@@ -215,7 +218,7 @@ export function useTTS(): UseTTSReturn {
     queueText,
     stop,
     clearQueue,
-    audioRef
+    audioRef,
   };
 }
 
@@ -244,6 +247,6 @@ export function extractSentences(
 
   return {
     sentences,
-    newIndex: lastProcessedIndex + currentLastIndex
+    newIndex: lastProcessedIndex + currentLastIndex,
   };
 }

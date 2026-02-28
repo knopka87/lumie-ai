@@ -23,21 +23,17 @@ export const MessageList = memo(function MessageList({
   }, [messages.length, messages[messages.length - 1]?.content]);
 
   return (
-    <div className="flex-1 overflow-y-auto p-8 space-y-10 max-w-3xl mx-auto w-full scrollbar-hide">
+    <div className="scrollbar-hide mx-auto w-full max-w-3xl flex-1 space-y-10 overflow-y-auto p-8">
       {messages.map((msg, idx) => (
-        <MessageBubble
-          key={msg.id ?? `msg-${idx}`}
-          message={msg}
-          onSpeak={onSpeak}
-        />
+        <MessageBubble key={msg.id ?? `msg-${idx}`} message={msg} onSpeak={onSpeak} />
       ))}
 
       {isLoading && (
         <div className="flex flex-col items-start">
-          <div className="flex gap-1.5 items-center px-6 py-5 bg-gray-50 rounded-[2rem] rounded-tl-none border border-gray-100">
-            <div className="w-2 h-2 bg-gray-300 rounded-full animate-bounce" />
-            <div className="w-2 h-2 bg-gray-300 rounded-full animate-bounce [animation-delay:0.2s]" />
-            <div className="w-2 h-2 bg-gray-300 rounded-full animate-bounce [animation-delay:0.4s]" />
+          <div className="flex items-center gap-1.5 rounded-[2rem] rounded-tl-none border border-gray-100 bg-gray-50 px-6 py-5">
+            <div className="h-2 w-2 animate-bounce rounded-full bg-gray-300" />
+            <div className="h-2 w-2 animate-bounce rounded-full bg-gray-300 [animation-delay:0.2s]" />
+            <div className="h-2 w-2 animate-bounce rounded-full bg-gray-300 [animation-delay:0.4s]" />
           </div>
         </div>
       )}

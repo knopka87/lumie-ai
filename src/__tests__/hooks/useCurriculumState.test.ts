@@ -13,7 +13,7 @@ describe('useCurriculumState', () => {
     mockFetch.mockReset();
     mockFetch.mockResolvedValue({
       ok: true,
-      json: async () => []
+      json: async () => [],
     });
   });
 
@@ -126,9 +126,11 @@ describe('useCurriculumState', () => {
   });
 
   it('should get current level data', () => {
-    const { result } = renderHook(() => useCurriculumState({
-      initialLevel: 'B1'
-    }));
+    const { result } = renderHook(() =>
+      useCurriculumState({
+        initialLevel: 'B1',
+      })
+    );
 
     const levelData = result.current.getCurrentLevelData();
     expect(levelData).toBeDefined();
@@ -185,12 +187,14 @@ describe('useCurriculumState', () => {
   it('should fetch progress from server when userId provided', async () => {
     mockFetch.mockResolvedValueOnce({
       ok: true,
-      json: async () => ['topic-1', 'topic-2', 'topic-3']
+      json: async () => ['topic-1', 'topic-2', 'topic-3'],
     });
 
-    const { result } = renderHook(() => useCurriculumState({
-      userId: 'test-user-123'
-    }));
+    const { result } = renderHook(() =>
+      useCurriculumState({
+        userId: 'test-user-123',
+      })
+    );
 
     await waitFor(() => {
       expect(result.current.completedTopics).toContain('topic-1');

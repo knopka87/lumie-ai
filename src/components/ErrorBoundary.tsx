@@ -20,7 +20,7 @@ export class ErrorBoundary extends Component<Props, State> {
     this.state = {
       hasError: false,
       error: null,
-      errorInfo: null
+      errorInfo: null,
     };
   }
 
@@ -38,7 +38,7 @@ export class ErrorBoundary extends Component<Props, State> {
     this.setState({
       hasError: false,
       error: null,
-      errorInfo: null
+      errorInfo: null,
     });
   };
 
@@ -53,26 +53,22 @@ export class ErrorBoundary extends Component<Props, State> {
       }
 
       return (
-        <div className="min-h-screen flex items-center justify-center bg-gray-50 p-6">
-          <div className="max-w-md w-full bg-white rounded-2xl shadow-xl p-8 text-center">
-            <div className="w-16 h-16 bg-red-100 rounded-full flex items-center justify-center mx-auto mb-6">
-              <AlertTriangle className="w-8 h-8 text-red-500" />
+        <div className="flex min-h-screen items-center justify-center bg-gray-50 p-6">
+          <div className="w-full max-w-md rounded-2xl bg-white p-8 text-center shadow-xl">
+            <div className="mx-auto mb-6 flex h-16 w-16 items-center justify-center rounded-full bg-red-100">
+              <AlertTriangle className="h-8 w-8 text-red-500" />
             </div>
 
-            <h1 className="text-2xl font-bold text-gray-900 mb-2">
-              {t('error.title')}
-            </h1>
+            <h1 className="mb-2 text-2xl font-bold text-gray-900">{t('error.title')}</h1>
 
-            <p className="text-gray-500 mb-6">
-              {t('error.description')}
-            </p>
+            <p className="mb-6 text-gray-500">{t('error.description')}</p>
 
             {process.env.NODE_ENV === 'development' && this.state.error && (
               <details className="mb-6 text-left">
                 <summary className="cursor-pointer text-sm text-gray-400 hover:text-gray-600">
                   {t('error.details')}
                 </summary>
-                <pre className="mt-2 p-4 bg-gray-100 rounded-lg text-xs text-red-600 overflow-auto max-h-40">
+                <pre className="mt-2 max-h-40 overflow-auto rounded-lg bg-gray-100 p-4 text-xs text-red-600">
                   {this.state.error.message}
                   {this.state.errorInfo?.componentStack}
                 </pre>
@@ -82,15 +78,15 @@ export class ErrorBoundary extends Component<Props, State> {
             <div className="flex gap-3">
               <button
                 onClick={this.handleReset}
-                className="flex-1 py-3 px-4 bg-gray-100 text-gray-700 rounded-xl font-semibold hover:bg-gray-200 transition-colors"
+                className="flex-1 rounded-xl bg-gray-100 px-4 py-3 font-semibold text-gray-700 transition-colors hover:bg-gray-200"
               >
                 {t('error.tryAgain')}
               </button>
               <button
                 onClick={this.handleReload}
-                className="flex-1 py-3 px-4 bg-orange-500 text-white rounded-xl font-semibold hover:bg-orange-600 transition-colors flex items-center justify-center gap-2"
+                className="flex flex-1 items-center justify-center gap-2 rounded-xl bg-orange-500 px-4 py-3 font-semibold text-white transition-colors hover:bg-orange-600"
               >
-                <RefreshCw className="w-4 h-4" />
+                <RefreshCw className="h-4 w-4" />
                 {t('error.reload')}
               </button>
             </div>
@@ -138,9 +134,7 @@ interface AsyncBoundaryProps {
 export function AsyncBoundary({ children, loading, error }: AsyncBoundaryProps) {
   return (
     <ErrorBoundary fallback={error}>
-      <React.Suspense fallback={loading || <DefaultLoading />}>
-        {children}
-      </React.Suspense>
+      <React.Suspense fallback={loading || <DefaultLoading />}>{children}</React.Suspense>
     </ErrorBoundary>
   );
 }
@@ -148,7 +142,7 @@ export function AsyncBoundary({ children, loading, error }: AsyncBoundaryProps) 
 function DefaultLoading() {
   return (
     <div className="flex items-center justify-center p-8">
-      <div className="w-8 h-8 border-4 border-orange-100 border-t-orange-500 rounded-full animate-spin" />
+      <div className="h-8 w-8 animate-spin rounded-full border-4 border-orange-100 border-t-orange-500" />
     </div>
   );
 }

@@ -1,6 +1,6 @@
-import { GoogleGenAI, Modality, Type } from "@google/genai";
+import { GoogleGenAI, Modality, Type } from '@google/genai';
 
-const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY || "" });
+const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY || '' });
 
 export const TUTOR_SYSTEM_INSTRUCTION = `
 You are Lumie, an emotional, supportive, and expressive AI language tutor. 
@@ -68,96 +68,122 @@ export async function generateEmbedding(_text: string): Promise<number[] | null>
 
 export async function extractFacts(text: string) {
   const response = await ai.models.generateContent({
-    model: "gemini-3-flash-preview",
-    contents: [{ parts: [{ text: `Extract valuable personal facts about the user from this conversation snippet.
+    model: 'gemini-3-flash-preview',
+    contents: [
+      {
+        parts: [
+          {
+            text: `Extract valuable personal facts about the user from this conversation snippet.
     CRITICAL: If the user mentions their name (e.g., "My name is Nikolay", "I am Alex"), extract it with the topic "user_name".
     Also extract: city, family, pets, hobbies, age, birthday, work, etc.
     Return a JSON array of objects with "topic" and "text" fields. If no facts, return [].
     Conversation:
-    "${text}"` }] }],
+    "${text}"`,
+          },
+        ],
+      },
+    ],
     config: {
-      responseMimeType: "application/json",
-    }
+      responseMimeType: 'application/json',
+    },
   });
   try {
-    return JSON.parse(response.text || "[]");
+    return JSON.parse(response.text || '[]');
   } catch (e) {
     return [];
   }
 }
 
-export async function generateTutorResponse(messages: { role: string, content: string }[], userContext: any, memories: any[] = []) {
+export async function generateTutorResponse(
+  messages: { role: string; content: string }[],
+  userContext: any,
+  memories: any[] = []
+) {
   const memoriesArray = Array.isArray(memories) ? memories : [];
   const memoryText = memoriesArray.map(m => `- ${m.topic}: ${m.summary}`).join('\n');
-  const systemPrompt = TUTOR_SYSTEM_INSTRUCTION
-    .replace(/{{name}}/g, userContext.name || 'Student')
+  const systemPrompt = TUTOR_SYSTEM_INSTRUCTION.replace(/{{name}}/g, userContext.name || 'Student')
     .replace(/{{native_lang}}/g, userContext.native_lang || 'Russian')
     .replace(/{{target_lang}}/g, userContext.target_lang || 'English')
     .replace(/{{level}}/g, userContext.level || 'beginner')
-    .replace(/{{memories}}/g, memoryText || "No memories yet. Ask the user about themselves!");
+    .replace(/{{memories}}/g, memoryText || 'No memories yet. Ask the user about themselves!');
 
   // Ensure contents is never empty
-  const contents = messages.length > 0 
-    ? messages.map(m => ({
-        role: m.role === 'user' ? 'user' : 'model',
-        parts: [{ text: m.content }]
-      }))
-    : [{ role: 'user', parts: [{ text: 'Hello! I am ready to start our language learning session.' }] }];
+  const contents =
+    messages.length > 0
+      ? messages.map(m => ({
+          role: m.role === 'user' ? 'user' : 'model',
+          parts: [{ text: m.content }],
+        }))
+      : [
+          {
+            role: 'user',
+            parts: [{ text: 'Hello! I am ready to start our language learning session.' }],
+          },
+        ];
 
   const response = await ai.models.generateContent({
-    model: "gemini-3-flash-preview",
+    model: 'gemini-3-flash-preview',
     contents,
     config: {
       systemInstruction: systemPrompt,
-    }
+    },
   });
   return response.text;
 }
 
-export async function generateTutorResponseStream(messages: { role: string, content: string }[], userContext: any, memories: any[] = []) {
+export async function generateTutorResponseStream(
+  messages: { role: string; content: string }[],
+  userContext: any,
+  memories: any[] = []
+) {
   const provider = userContext.provider || 'gemini';
-  
+
   if (provider === 'ollama') {
     return generateOllamaResponseStream(messages, userContext, memories);
   }
 
   const memoriesArray = Array.isArray(memories) ? memories : [];
   const memoryText = memoriesArray.map(m => `- ${m.topic}: ${m.summary}`).join('\n');
-  const systemPrompt = TUTOR_SYSTEM_INSTRUCTION
-    .replace(/{{name}}/g, userContext.name || 'Student')
+  const systemPrompt = TUTOR_SYSTEM_INSTRUCTION.replace(/{{name}}/g, userContext.name || 'Student')
     .replace(/{{native_lang}}/g, userContext.native_lang || 'Russian')
     .replace(/{{target_lang}}/g, userContext.target_lang || 'English')
     .replace(/{{level}}/g, userContext.level || 'beginner')
-    .replace(/{{memories}}/g, memoryText || "No memories yet. Ask the user about themselves!");
+    .replace(/{{memories}}/g, memoryText || 'No memories yet. Ask the user about themselves!');
 
   // Ensure contents is never empty
-  const contents = messages.length > 0 
-    ? messages.map(m => ({
-        role: m.role === 'user' ? 'user' : 'model',
-        parts: [{ text: m.content }]
-      }))
-    : [{ role: 'user', parts: [{ text: 'Hello! I am ready to start our language learning session.' }] }];
+  const contents =
+    messages.length > 0
+      ? messages.map(m => ({
+          role: m.role === 'user' ? 'user' : 'model',
+          parts: [{ text: m.content }],
+        }))
+      : [
+          {
+            role: 'user',
+            parts: [{ text: 'Hello! I am ready to start our language learning session.' }],
+          },
+        ];
 
   return await ai.models.generateContentStream({
-    model: "gemini-3-flash-preview",
+    model: 'gemini-3-flash-preview',
     contents,
     config: {
       systemInstruction: systemPrompt,
-    }
+    },
   });
 }
 
 async function generateOllamaResponseStream(messages: any[], userContext: any, memories: any[]) {
   const ollamaUrl = userContext.ollama_url || 'http://localhost:11434';
   const model = userContext.ollama_model || 'llama3';
-  
-  const memoriesArray = Array.isArray(memories) ? memories : [];
-  const memoryContext = memoriesArray.length > 0 
-    ? memoriesArray.map(m => `- ${m.topic}: ${m.summary}`).join('\n')
-    : "No specific memories yet.";
 
-  const systemPrompt = TUTOR_SYSTEM_INSTRUCTION
-    .replace(/{{name}}/g, userContext.name || 'Student')
+  const memoriesArray = Array.isArray(memories) ? memories : [];
+  const memoryContext =
+    memoriesArray.length > 0
+      ? memoriesArray.map(m => `- ${m.topic}: ${m.summary}`).join('\n')
+      : 'No specific memories yet.';
+
+  const systemPrompt = TUTOR_SYSTEM_INSTRUCTION.replace(/{{name}}/g, userContext.name || 'Student')
     .replace(/{{native_lang}}/g, userContext.native_lang || 'Russian')
     .replace(/{{target_lang}}/g, userContext.target_lang || 'English')
     .replace(/{{level}}/g, userContext.level || 'beginner')
@@ -170,14 +196,16 @@ async function generateOllamaResponseStream(messages: any[], userContext: any, m
       model: model,
       messages: [
         { role: 'system', content: systemPrompt },
-        ...messages.map(m => ({ role: m.role, content: m.content }))
+        ...messages.map(m => ({ role: m.role, content: m.content })),
       ],
-      stream: true
-    })
+      stream: true,
+    }),
   });
 
   if (!response.ok) {
-    throw new Error(`Ollama error: ${response.statusText}. Make sure Ollama is running with OLLAMA_ORIGINS="*"`);
+    throw new Error(
+      `Ollama error: ${response.statusText}. Make sure Ollama is running with OLLAMA_ORIGINS="*"`
+    );
   }
 
   const reader = response.body?.getReader();
@@ -188,10 +216,10 @@ async function generateOllamaResponseStream(messages: any[], userContext: any, m
       while (true) {
         const { done, value } = await reader!.read();
         if (done) break;
-        
+
         const chunk = decoder.decode(value, { stream: true });
         const lines = chunk.split('\n');
-        
+
         for (const line of lines) {
           if (!line.trim()) continue;
           try {
@@ -204,7 +232,7 @@ async function generateOllamaResponseStream(messages: any[], userContext: any, m
           }
         }
       }
-    }
+    },
   };
 }
 
@@ -213,7 +241,7 @@ export async function generateSpeech(text: string) {
   // We keep the Maya personality through the system prompt and expressive text
   try {
     const response = await ai.models.generateContent({
-      model: "gemini-2.5-flash-preview-tts",
+      model: 'gemini-2.5-flash-preview-tts',
       contents: [{ parts: [{ text }] }],
       config: {
         responseModalities: [Modality.AUDIO],
@@ -228,7 +256,7 @@ export async function generateSpeech(text: string) {
     const data = response.candidates?.[0]?.content?.parts?.[0]?.inlineData?.data;
     return data ? { data, format: 'pcm' } : null;
   } catch (e) {
-    console.error("Gemini TTS failed:", e);
+    console.error('Gemini TTS failed:', e);
     return null;
   }
 }
@@ -254,17 +282,17 @@ export async function generateLessonContent(topic: any, userContext: any) {
   }`;
 
   const response = await ai.models.generateContent({
-    model: "gemini-3-flash-preview",
+    model: 'gemini-3-flash-preview',
     contents: [{ parts: [{ text: prompt }] }],
     config: {
-      responseMimeType: "application/json",
-    }
+      responseMimeType: 'application/json',
+    },
   });
 
   try {
-    return JSON.parse(response.text || "{}");
+    return JSON.parse(response.text || '{}');
   } catch (e) {
-    console.error("Failed to parse lesson content:", e);
+    console.error('Failed to parse lesson content:', e);
     return null;
   }
 }

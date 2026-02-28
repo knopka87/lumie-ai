@@ -50,10 +50,9 @@ export class MigrationRunner {
       try {
         this.db.transaction(() => {
           migration.up(this.db);
-          this.db.prepare('INSERT INTO _migrations (version, name) VALUES (?, ?)').run(
-            migration.version,
-            migration.name
-          );
+          this.db
+            .prepare('INSERT INTO _migrations (version, name) VALUES (?, ?)')
+            .run(migration.version, migration.name);
         })();
         console.log(`  ✓ Migration ${migration.version} applied`);
       } catch (error) {
@@ -201,7 +200,7 @@ export const migrations: Migration[] = [
     name: 'add_user_settings',
     up: db => {
       // Check if columns exist before adding
-      const tableInfo = db.prepare("PRAGMA table_info(users)").all() as any[];
+      const tableInfo = db.prepare('PRAGMA table_info(users)').all() as any[];
       const columns = new Set(tableInfo.map(c => c.name));
 
       if (!columns.has('provider')) {
@@ -225,7 +224,7 @@ export const migrations: Migration[] = [
     version: 4,
     name: 'add_message_metadata',
     up: db => {
-      const tableInfo = db.prepare("PRAGMA table_info(messages)").all() as any[];
+      const tableInfo = db.prepare('PRAGMA table_info(messages)').all() as any[];
       const columns = new Set(tableInfo.map(c => c.name));
 
       if (!columns.has('tokens')) {

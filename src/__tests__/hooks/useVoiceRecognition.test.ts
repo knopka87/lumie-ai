@@ -13,9 +13,9 @@ describe('useVoiceRecognition', () => {
     Object.defineProperty(window, 'webkitSpeechRecognition', {
       writable: true,
       configurable: true,
-      value: function() {
+      value: function () {
         return mockRecognition;
-      }
+      },
     });
 
     // Mock navigator.permissions
@@ -25,9 +25,9 @@ describe('useVoiceRecognition', () => {
       value: {
         query: vi.fn().mockResolvedValue({
           state: 'prompt',
-          onchange: null
-        })
-      }
+          onchange: null,
+        }),
+      },
     });
 
     // Mock navigator.mediaDevices
@@ -36,9 +36,9 @@ describe('useVoiceRecognition', () => {
       configurable: true,
       value: {
         getUserMedia: vi.fn().mockResolvedValue({
-          getTracks: () => [{ stop: vi.fn() }]
-        })
-      }
+          getTracks: () => [{ stop: vi.fn() }],
+        }),
+      },
     });
   });
 
@@ -92,9 +92,7 @@ describe('useVoiceRecognition', () => {
     );
 
     const onError = vi.fn();
-    const { result } = renderHook(() =>
-      useVoiceRecognition({ onError })
-    );
+    const { result } = renderHook(() => useVoiceRecognition({ onError }));
 
     let granted = false;
     await act(async () => {

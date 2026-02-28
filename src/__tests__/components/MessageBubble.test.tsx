@@ -6,8 +6,8 @@ import { createMockMessage } from '../helpers';
 // Mock framer-motion to avoid animation issues in tests
 vi.mock('motion/react', () => ({
   motion: {
-    div: ({ children, ...props }: any) => <div {...props}>{children}</div>
-  }
+    div: ({ children, ...props }: any) => <div {...props}>{children}</div>,
+  },
 }));
 
 // Mock i18n
@@ -15,17 +15,17 @@ vi.mock('../../i18n', () => ({
   t: (key: string) => {
     const translations: Record<string, string> = {
       'ui.readAloud': 'Read aloud',
-      'lesson.learningCard': 'Learning Card'
+      'lesson.learningCard': 'Learning Card',
     };
     return translations[key] || key;
-  }
+  },
 }));
 
 describe('MessageBubble', () => {
   it('should render user message with correct styling', () => {
     const message = createMockMessage({
       role: 'user',
-      content: 'Hello world'
+      content: 'Hello world',
     });
 
     render(<MessageBubble message={message} />);
@@ -36,7 +36,7 @@ describe('MessageBubble', () => {
   it('should render assistant message with correct styling', () => {
     const message = createMockMessage({
       role: 'assistant',
-      content: 'Hi there!'
+      content: 'Hi there!',
     });
 
     render(<MessageBubble message={message} />);
@@ -47,7 +47,7 @@ describe('MessageBubble', () => {
   it('should show speak button for assistant messages when onSpeak provided', () => {
     const message = createMockMessage({
       role: 'assistant',
-      content: 'Test message'
+      content: 'Test message',
     });
     const onSpeak = vi.fn();
 
@@ -60,7 +60,7 @@ describe('MessageBubble', () => {
   it('should not show speak button for user messages', () => {
     const message = createMockMessage({
       role: 'user',
-      content: 'Test message'
+      content: 'Test message',
     });
     const onSpeak = vi.fn();
 
@@ -72,7 +72,7 @@ describe('MessageBubble', () => {
   it('should call onSpeak when speak button clicked', () => {
     const message = createMockMessage({
       role: 'assistant',
-      content: 'Test message content'
+      content: 'Test message content',
     });
     const onSpeak = vi.fn();
 
@@ -88,7 +88,7 @@ describe('MessageBubble', () => {
     const message = createMockMessage({
       role: 'assistant',
       content: 'Some theory content',
-      type: 'theory'
+      type: 'theory',
     });
 
     render(<MessageBubble message={message} />);
@@ -100,7 +100,7 @@ describe('MessageBubble', () => {
     const message = createMockMessage({
       role: 'assistant',
       content: 'Regular message',
-      type: 'text'
+      type: 'text',
     });
 
     render(<MessageBubble message={message} />);
@@ -111,7 +111,7 @@ describe('MessageBubble', () => {
   it('should render markdown content', () => {
     const message = createMockMessage({
       role: 'assistant',
-      content: '**Bold text** and *italic*'
+      content: '**Bold text** and *italic*',
     });
 
     render(<MessageBubble message={message} />);

@@ -6,11 +6,11 @@ vi.mock('@google/genai', () => ({
   GoogleGenAI: vi.fn().mockImplementation(() => ({
     models: {
       generateContent: vi.fn(),
-      generateContentStream: vi.fn()
-    }
+      generateContentStream: vi.fn(),
+    },
   })),
   Modality: { AUDIO: 'audio', TEXT: 'text' },
-  Type: { ARRAY: 'array', OBJECT: 'object', STRING: 'string' }
+  Type: { ARRAY: 'array', OBJECT: 'object', STRING: 'string' },
 }));
 
 import { extractSentences } from '../hooks/useTTS';

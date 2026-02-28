@@ -10,7 +10,8 @@ export const en = {
   'auth.startJourney': 'Start your journey today',
   'auth.error.connection': 'Failed to connect to server. Please check your connection.',
   'auth.error.demoFailed': 'Failed to enter demo mode.',
-  'auth.error.micDenied': 'Microphone access denied. Please allow microphone access in your browser settings.',
+  'auth.error.micDenied':
+    'Microphone access denied. Please allow microphone access in your browser settings.',
 
   // Navigation
   'nav.conversation': 'Conversation',
@@ -20,10 +21,11 @@ export const en = {
 
   // Chat
   'chat.greeting': 'Hi, {{name}}!',
-  'chat.readyToPractice': 'Ready to practice your {{language}} today? I\'m here to help you speak naturally.',
+  'chat.readyToPractice':
+    "Ready to practice your {{language}} today? I'm here to help you speak naturally.",
   'chat.placeholder': 'Message Lumie in {{language}}...',
   'chat.hints.hello': 'How do I say "hello" in {{language}}?',
-  'chat.hints.coffeeShop': 'Let\'s practice a coffee shop conversation',
+  'chat.hints.coffeeShop': "Let's practice a coffee shop conversation",
   'chat.hints.grammar': 'Explain a grammar rule',
   'chat.hints.joke': 'Tell me a joke',
   'chat.newLine': 'Shift + Enter for new line',
@@ -52,7 +54,7 @@ export const en = {
   'lesson.preparing': 'Preparing your lesson...',
   'lesson.crafting': 'Lumie is crafting the perfect explanation for you.',
   'lesson.complete': 'Lesson Complete!',
-  'lesson.greatJob': 'Great job! You\'ve mastered',
+  'lesson.greatJob': "Great job! You've mastered",
   'lesson.yourScore': 'Your score:',
   'lesson.backToPath': 'Back to Path',
   'lesson.finishContinue': 'Finish & Continue',
@@ -107,7 +109,8 @@ export const en = {
   'onboarding.step4.skip': 'SKIP',
 
   'onboarding.step5.title': "You're ready, {{name}}!",
-  'onboarding.step5.subtitle': "Let's start our first conversation in {{language}} at level {{level}}.",
+  'onboarding.step5.subtitle':
+    "Let's start our first conversation in {{language}} at level {{level}}.",
 
   // Errors
   'error.title': 'Something went wrong',
@@ -133,9 +136,11 @@ export const en = {
 
   // Additional Errors
   'error.onboardingFailed': 'Something went wrong during onboarding. Please try again.',
-  'error.micInstructions': 'Please click the lock icon in your browser\'s address bar and set Microphone to "Allow".',
+  'error.micInstructions':
+    'Please click the lock icon in your browser\'s address bar and set Microphone to "Allow".',
   'error.speechNotSupported': 'Speech recognition is not supported in this browser.',
   'error.liveModeError': 'Live mode error occurred. Please try again.',
   'error.rateLimit': 'API rate limit reached. Please wait {{seconds}} seconds.',
-  'error.rateLimitMessage': 'I need a short break! The AI service is temporarily busy. Please wait a moment and try again, or start a new conversation.',
+  'error.rateLimitMessage':
+    'I need a short break! The AI service is temporarily busy. Please wait a moment and try again, or start a new conversation.',
 };
