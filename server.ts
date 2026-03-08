@@ -138,6 +138,9 @@ try {
 try {
   db.prepare("ALTER TABLE users ADD COLUMN is_onboarded INTEGER DEFAULT 0").run();
 } catch (e) {}
+try {
+  db.prepare("ALTER TABLE users ADD COLUMN voice TEXT DEFAULT 'lumie'").run();
+} catch (e) {}
 
 async function startServer() {
   const app = express();
@@ -492,6 +495,46 @@ async function startServer() {
     res.json({ success: true });
   });
 
+  app.post("/api/user/update", (req, res) => {
+    const { userId, voice, name, age, gender, avatar } = req.body;
+
+    if (!isValidString(userId, 100)) {
+      return res.status(400).json({ error: "Invalid userId" });
+    }
+
+    const updates: string[] = [];
+    const params: any[] = [];
+
+    if (voice && (voice === 'lumie' || voice === 'leo')) {
+      updates.push("voice = ?");
+      params.push(voice);
+    }
+    if (name && isValidString(name, 100)) {
+      updates.push("name = ?");
+      params.push(name);
+    }
+    if (age !== undefined) {
+      updates.push("age = ?");
+      params.push(age);
+    }
+    if (gender && isValidString(gender, 20)) {
+      updates.push("gender = ?");
+      params.push(gender);
+    }
+    if (avatar && isValidString(avatar, 200)) {
+      updates.push("avatar = ?");
+      params.push(avatar);
+    }
+
+    if (updates.length === 0) {
+      return res.json({ success: true, message: "No updates provided" });
+    }
+
+    params.push(userId);
+    db.prepare(`UPDATE users SET ${updates.join(", ")} WHERE id = ?`).run(...params);
+    res.json({ success: true });
+  });
+
   // --- SECURE API CONFIG ---
   // SECURITY: Rate limiting for API key requests
   const apiKeyRequestCounts = new Map<string, { count: number; resetTime: number }>();
@@ -599,7 +642,7 @@ async function startServer() {
     }
     // Validate embedding dimension (all-MiniLM-L6-v2 produces 384)
     if (embedding.length !== 384) {
-      const rows = db.prepare("SELECT id, topic, summary FROM memory WHERE user_id = ? ORDER BY created_at DESC LIMIT 5").all(userId);
+      const rows = db.prepare("SELECT id, topic, summary FROM memory WHERE user_id = ? ORDER BY created_at DESC LIMIT 50").all(userId);
       return res.json(rows.map((row: any) => ({ ...row, similarity: 0 })));
     }
 
@@ -629,7 +672,7 @@ async function startServer() {
         })
         .filter(r => r.similarity > 0.3) // Filter low similarity
         .sort((a, b) => b.similarity - a.similarity)
-        .slice(0, 5);
+        .slice(0, 50);
 
       return res.json(results);
     }
@@ -640,15 +683,15 @@ async function startServer() {
 
       // VSS search returns rowid and distance (lower = more similar)
       const vssResults: any[] = db.prepare(`
-        SELECT rowid, distance
-        FROM vss_memory
-        WHERE vss_search(embedding, ?)
-        LIMIT 20
-      `).all(embeddingJson);
+         SELECT rowid, distance
+         FROM vss_memory
+         WHERE vss_search(embedding, ?)
+         LIMIT 50
+       `).all(embeddingJson);
 
       if (vssResults.length === 0) {
         // No vectors in VSS yet, fall back to regular query
-        const rows = db.prepare("SELECT id, topic, summary FROM memory WHERE user_id = ? ORDER BY created_at DESC LIMIT 5").all(userId);
+        const rows = db.prepare("SELECT id, topic, summary FROM memory WHERE user_id = ? ORDER BY created_at DESC LIMIT 50").all(userId);
         return res.json(rows.map((row: any) => ({ ...row, similarity: 0 })));
       }
 

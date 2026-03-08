@@ -27,9 +27,7 @@ interface UseCurriculumStateReturn {
 
 const PROGRESS_STORAGE_KEY = 'lumie_progress';
 
-export function useCurriculumState(
-  options: UseCurriculumStateOptions = {}
-): UseCurriculumStateReturn {
+export function useCurriculumState(options: UseCurriculumStateOptions = {}): UseCurriculumStateReturn {
   const { userId, initialLevel = 'A1' } = options;
 
   const [currentLevel, setCurrentLevelState] = useState<CEFRLevel>(initialLevel);
@@ -90,44 +88,35 @@ export function useCurriculumState(
     }
   }, []);
 
-  const completeTopic = useCallback(
-    async (topicId: string) => {
-      if (completedTopics.includes(topicId)) return;
+  const completeTopic = useCallback(async (topicId: string) => {
+    if (completedTopics.includes(topicId)) return;
 
-      setCompletedTopics(prev => [...prev, topicId]);
+    setCompletedTopics(prev => [...prev, topicId]);
 
-      if (userId) {
-        try {
-          await fetch('/api/user/complete-topic', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ userId, topicId }),
-          });
-        } catch (err) {
-          console.error('Failed to save topic completion:', err);
-        }
+    if (userId) {
+      try {
+        await fetch('/api/user/complete-topic', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ userId, topicId })
+        });
+      } catch (err) {
+        console.error('Failed to save topic completion:', err);
       }
-    },
-    [userId, completedTopics]
-  );
+    }
+  }, [userId, completedTopics]);
 
-  const getProgressPercent = useCallback(
-    (levelId: string): number => {
-      const level = CEFR_CURRICULUM.find(l => l.level === levelId);
-      if (!level) return 0;
+  const getProgressPercent = useCallback((levelId: string): number => {
+    const level = CEFR_CURRICULUM.find(l => l.level === levelId);
+    if (!level) return 0;
 
-      const completed = level.topics.filter(t => completedTopics.includes(t.id)).length;
-      return Math.round((completed / level.topics.length) * 100);
-    },
-    [completedTopics]
-  );
+    const completed = level.topics.filter(t => completedTopics.includes(t.id)).length;
+    return Math.round((completed / level.topics.length) * 100);
+  }, [completedTopics]);
 
-  const isTopicCompleted = useCallback(
-    (topicId: string): boolean => {
-      return completedTopics.includes(topicId);
-    },
-    [completedTopics]
-  );
+  const isTopicCompleted = useCallback((topicId: string): boolean => {
+    return completedTopics.includes(topicId);
+  }, [completedTopics]);
 
   const getCurrentLevelData = useCallback((): LevelCurriculum | undefined => {
     return CEFR_CURRICULUM.find(l => l.level === currentLevel);
@@ -169,6 +158,6 @@ export function useCurriculumState(
     getProgressPercent,
     isTopicCompleted,
     getCurrentLevelData,
-    getNextTopic,
+    getNextTopic
   };
 }

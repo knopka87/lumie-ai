@@ -840,102 +840,6 @@ const storedEmbedding = JSON.parse(row.embedding);
 
 ---
 
-### 41. Удаление клиентских embeddings
-
-**Проблема:**
-- Библиотека `@xenova/transformers` пыталась загрузить модель `all-MiniLM-L6-v2` из Hugging Face CDN в браузере
-- CDN возвращал HTML страницу ошибки вместо файлов модели
-- Консоль заполнялась предупреждениями: `JSON Parse error: Unrecognized token '<'`
-
-**Решение — только серверные embeddings:**
-
-```typescript
-// src/services/geminiService.ts
-
-// До: загрузка модели в браузере
-import { pipeline } from "@xenova/transformers";
-embeddingPipeline = await pipeline('feature-extraction', 'Xenova/all-MiniLM-L6-v2');
-
-// После: embeddings только на сервере
-export async function generateEmbedding(_text: string): Promise<number[] | null> {
-  return null; // Сервер обрабатывает embeddings
-}
-```
-
-**Изменения:**
-- Удалён импорт `@xenova/transformers` из `geminiService.ts`
-- Удалена логика загрузки и retry модели
-- `generateEmbedding()` возвращает `null` — сервер обрабатывает всё
-- Удалена зависимость `@xenova/transformers` из `package.json`
-- Обновлены тесты (удалены моки для `@xenova/transformers`)
-
-**Результат:**
-- Нет предупреждений в консоли браузера
-- Уменьшен размер бандла (~15MB меньше)
-- Embeddings генерируются на сервере через тот же код
-
----
-
-### 42. Добавлен favicon
-
-**Проблема:**
-- Браузер автоматически запрашивал `/favicon.ico`
-- Сервер возвращал 404 ошибку
-
-**Решение:**
-
-```html
-<!-- index.html -->
-<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>💡</text></svg>">
-```
-
-- Inline SVG favicon с эмодзи 💡 (лампочка — соответствует бренду "Lumie")
-- Не требует отдельного файла
-- Поддерживается всеми современными браузерами
-
----
-
-### 43. CI/CD исправления
-
-**Проблема 1:** `prettier-plugin-tailwindcss` не найден
-```
-Cannot find package 'prettier-plugin-tailwindcss'
-```
-
-**Решение:**
-```bash
-npm install -D prettier-plugin-tailwindcss
-npm run format  # исправлено форматирование в 36 файлах
-```
-
-**Проблема 2:** `@vitest/coverage-v8` не найден
-```
-MISSING DEPENDENCY Cannot find dependency '@vitest/coverage-v8'
-```
-
-**Решение:**
-```bash
-npm install -D @vitest/coverage-v8@^3.0.0
-```
-
----
-
-### 44. GitHub репозиторий
-
-**Репозиторий:** https://github.com/knopka87/lumie-ai
-
-**Обновлён README.md:**
-- Исправлен URL для `git clone`
-- Обновлено описание Embeddings (серверная генерация)
-- Добавлена ссылка на GitHub Issues
-
-**CI/CD статус:** Все проверки проходят
-- ✅ Tests
-- ✅ Lint & Format
-- ✅ Build
-
----
-
 ### Статус проекта (финальный)
 
 | Метрика | Значение |
@@ -943,12 +847,9 @@ npm install -D @vitest/coverage-v8@^3.0.0
 | Тестов | 126 |
 | Build | ✅ Успешно |
 | TypeCheck | ✅ Без ошибок |
-| CI/CD | ✅ GitHub Actions |
 | Миграции БД | ✅ 6 миграций |
-| Векторная БД | ✅ Только сервер (sqlite-vss + JS fallback) |
+| Векторная БД | ✅ sqlite-vss + JS fallback |
 | Windows Support | ✅ Полная поддержка |
 | Google Sign-In | ✅ Обязательно |
 | Rate Limit | ✅ Обработка 429 |
-| Favicon | ✅ 💡 |
-| Размер бандла | ✅ Оптимизирован (-15MB) |
-| Репозиторий | https://github.com/knopka87/lumie-ai |
+| README | ✅ Полная документация |
