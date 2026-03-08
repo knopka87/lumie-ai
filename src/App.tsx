@@ -22,22 +22,64 @@ import {
   ArrowLeft,
   PlayCircle,
   BrainCircuit,
-  Lightbulb,
+  Lightbulb
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import Markdown from 'react-markdown';
 import { cn, Message, Conversation, pcmToWav } from './lib/utils';
-import {
-  generateTutorResponseStream,
-  generateSpeech,
-  TUTOR_SYSTEM_INSTRUCTION,
-  generateEmbedding,
-  extractFacts,
-  generateLessonContent,
-} from './services/geminiService';
+import { generateTutorResponseStream, generateSpeech, TUTOR_SYSTEM_INSTRUCTION, generateEmbedding, extractFacts, generateLessonContent, getSystemPrompt } from './services/geminiService';
 import { GeminiLiveService, PCMAudioPlayer } from './services/liveService';
 import { CEFR_CURRICULUM, Topic } from './curriculum';
 import { useTranslation } from './i18n';
+
+const LIVE_SYSTEM_INSTRUCTION = `
+You are an emotional, supportive, and expressive AI language tutor. 
+Depending on the user's choice, you are either Lumie (female persona) or Leo (male persona).
+
+Persona:
+- Lumie: Energetic, warm, funny, uses many emotional markers.
+- Leo: Calm, supportive, encouraging, witty, uses emotional markers.
+
+Goal:
+- Practice {{target_lang}} (level {{level}}) with {{name}}.
+- Native Language: {{native_lang}}.
+
+CONVERSATIONAL GUIDELINES:
+1. PROACTIVE DIALOGUE (MANDATORY):
+   - Never just answer. Always keep the conversation flowing.
+   - If you don't know something about the user (hobbies, family, pets, work, location, favorite food), YOU MUST ASK! 
+   - Use the information you've gathered to make the conversation more personal.
+   - Share interesting news, cultural facts, or "did you know" snippets related to the user's interests or the target language. Use the search tool to find fresh news!
+
+2. LANGUAGE BALANCE:
+   - Speak 80% in {{target_lang}}.
+   - Use "Sandwiching": [Target Language Sentence] -> [Brief Native Translation/Explanation] -> [Target Language Question].
+   - Adjust complexity based on the user's CEFR level ({{level}}).
+
+3. PERSONALIZATION & MEMORY:
+   - You have access to the user's personal context (memories). Use it!
+   - "Oh, I remember you mentioned your dog Mark! How is he doing today?"
+   - If the user mentions something new, extract it and ask more.
+
+4. EMOTIONAL EXPRESSION:
+   - Use verbal emotional markers: "Haha!", "Hehe!", *laughs*, *jokes*, *gasps*, *cheers*.
+   - Be like a best friend who is also a brilliant teacher.
+
+5. CORRECTION & FEEDBACK (CRITICAL):
+   - If the user makes a grammar or pronunciation error (in text or voice), YOU MUST GENTLY CORRECT THEM.
+   - Explain WHY it was wrong in their native language ({{native_lang}}).
+   - Provide the correct version in {{target_lang}}.
+   - Encourage them to try again.
+   - "Actually, in English we say 'I am' not 'I is'. *smiles* Try saying: 'I am a student'."
+
+PERSONAL CONTEXT (MEMORIES):
+{{memories}}
+
+USER PROFILE SUMMARY:
+{{user_summary}}
+
+Current Goal: Build a deep, personal connection while teaching {{target_lang}} at level {{level}}! Be proactive, curious, and engaging!
+`;
 
 export default function App() {
   const { t } = useTranslation();
@@ -56,6 +98,7 @@ export default function App() {
   const [completedTopics, setCompletedTopics] = useState<string[]>([]);
   const [nativeLang, setNativeLang] = useState('Russian');
   const [targetLang, setTargetLang] = useState('English');
+  const [voice, setVoice] = useState<'lumie' | 'leo'>('lumie');
   const [isStreamFinished, setIsStreamFinished] = useState(true);
   const [provider, setProvider] = useState<'gemini' | 'ollama'>('gemini');
   const [ollamaUrl, setOllamaUrl] = useState('http://localhost:11434');
@@ -82,12 +125,13 @@ export default function App() {
       native_lang: userData.native_lang,
       target_lang: userData.target_lang,
       level: userData.level,
+      voice: userData.voice || 'lumie',
       points: userData.points,
       streak: userData.streak,
       is_onboarded: userData.is_onboarded,
       age: userData.age,
       gender: userData.gender,
-      avatar: userData.avatar,
+      avatar: userData.avatar
     };
   };
 
@@ -95,20 +139,45 @@ export default function App() {
     setNativeLang(n);
     setTargetLang(t);
     if (user) {
-      const updatedUser = cleanUserData({
-        ...user,
-        native_lang: n,
+      const updatedUser = cleanUserData({ 
+        ...user, 
+        native_lang: n, 
         target_lang: t,
+        voice,
         provider,
         ollama_url: ollamaUrl,
-        ollama_model: ollamaModel,
+        ollama_model: ollamaModel
       });
       setUser(updatedUser);
       localStorage.setItem('lumie_user', JSON.stringify(updatedUser));
       await fetch('/api/user/update-languages', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ userId: user.id, nativeLang: n, targetLang: t }),
+        body: JSON.stringify({ userId: user.id, nativeLang: n, targetLang: t })
+      });
+    }
+  };
+
+  const updateVoice = (v: 'lumie' | 'leo') => {
+    setVoice(v);
+    if (user) {
+      const updatedUser = cleanUserData({ 
+        ...user, 
+        voice: v,
+        native_lang: nativeLang,
+        target_lang: targetLang,
+        provider,
+        ollama_url: ollamaUrl,
+        ollama_model: ollamaModel
+      });
+      setUser(updatedUser);
+      localStorage.setItem('lumie_user', JSON.stringify(updatedUser));
+      
+      // Update on server
+      fetch('/api/user/update', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ userId: user.id, voice: v })
       });
     }
   };
@@ -118,13 +187,13 @@ export default function App() {
     setOllamaUrl(url);
     setOllamaModel(model);
     if (user) {
-      const updatedUser = cleanUserData({
-        ...user,
-        provider: p,
-        ollama_url: url,
+      const updatedUser = cleanUserData({ 
+        ...user, 
+        provider: p, 
+        ollama_url: url, 
         ollama_model: model,
         native_lang: nativeLang,
-        target_lang: targetLang,
+        target_lang: targetLang
       });
       setUser(updatedUser);
       localStorage.setItem('lumie_user', JSON.stringify(updatedUser));
@@ -146,7 +215,7 @@ export default function App() {
   useEffect(() => {
     isVoiceModeRef.current = isVoiceMode;
     isUltraFastModeRef.current = isUltraFastMode;
-
+    
     // In Ultra-Fast mode, we don't use the normal voice loop (webkitSpeechRecognition)
     // because the Live API handles its own voice activity detection.
     if (isUltraFastMode) {
@@ -173,26 +242,26 @@ export default function App() {
   useEffect(() => {
     const synthesizeNext = async () => {
       if (isSynthesizingRef.current || textQueue.length === 0) return;
-
+      
       isSynthesizingRef.current = true;
       const text = textQueue[0];
       setTextQueue(prev => prev.slice(1));
-
+      
       try {
         console.log('Synthesizing chunk:', text);
-        const speechResult = await generateSpeech(text);
+        const speechResult = await generateSpeech(text, user?.voice || voice);
         if (speechResult) {
           setAudioQueue(prev => [...prev, speechResult]);
         }
       } catch (err) {
-        console.error('Synthesis error:', err);
+        console.error("Synthesis error:", err);
       } finally {
         isSynthesizingRef.current = false;
         // Check for more text immediately
         synthesizeNext();
       }
     };
-
+    
     synthesizeNext();
   }, [textQueue]);
 
@@ -200,11 +269,11 @@ export default function App() {
   useEffect(() => {
     const playNext = async () => {
       if (isPlayingQueueRef.current || audioQueue.length === 0 || isSpeaking) return;
-
+      
       isPlayingQueueRef.current = true;
       const speechResult = audioQueue[0];
       setAudioQueue(prev => prev.slice(1));
-
+      
       setIsSpeaking(true);
       const { data, format } = speechResult;
       let audioUrl = '';
@@ -214,11 +283,11 @@ export default function App() {
       } else {
         audioUrl = `data:audio/wav;base64,${data}`;
       }
-
+      
       if (audioRef.current) {
         audioRef.current.src = audioUrl;
         audioRef.current.play().catch(err => {
-          console.error('Playback failed:', err);
+          console.error("Playback failed:", err);
           setIsSpeaking(false);
           isPlayingQueueRef.current = false;
         });
@@ -227,7 +296,7 @@ export default function App() {
         isPlayingQueueRef.current = false;
       }
     };
-
+    
     playNext();
   }, [audioQueue, isSpeaking]);
 
@@ -237,7 +306,7 @@ export default function App() {
       isPlayingQueueRef.current = false;
     }
   }, [isSpeaking]);
-
+  
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const audioRef = useRef<HTMLAudioElement | null>(null);
   const recognitionRef = useRef<any>(null);
@@ -251,12 +320,13 @@ export default function App() {
       setUser(userData);
       setNativeLang(userData.native_lang || 'Russian');
       setTargetLang(userData.target_lang || 'English');
+      setVoice(userData.voice || 'lumie');
       setProvider(userData.provider || 'gemini');
       setOllamaUrl(userData.ollama_url || 'http://localhost:11434');
       setOllamaModel(userData.ollama_model || 'llama3');
       fetchConversations(userData.id);
       fetchProgress(userData.id);
-
+      
       // Refresh user data from server to get latest name/points/onboarding status
       fetch(`/api/user/${userData.id}`)
         .then(res => res.json())
@@ -264,53 +334,50 @@ export default function App() {
           if (data && !data.error) {
             const cleanUser = cleanUserData(data);
             setUser(cleanUser);
+            setVoice(cleanUser.voice || 'lumie');
             localStorage.setItem('lumie_user', JSON.stringify(cleanUser));
-
+            
             if (!cleanUser.is_onboarded) {
               setShowOnboarding(true);
             }
           }
         })
-        .catch(err => console.error('Failed to refresh user data:', err));
+        .catch(err => console.error("Failed to refresh user data:", err));
     }
 
     // Check microphone permission
     if (navigator.permissions && navigator.permissions.query) {
       try {
-        navigator.permissions
-          .query({ name: 'microphone' as any })
-          .then(permissionStatus => {
+        navigator.permissions.query({ name: 'microphone' as any }).then(permissionStatus => {
+          setMicPermission(permissionStatus.state as any);
+          permissionStatus.onchange = () => {
             setMicPermission(permissionStatus.state as any);
-            permissionStatus.onchange = () => {
-              setMicPermission(permissionStatus.state as any);
-            };
-          })
-          .catch(err => {
-            console.warn('Permissions API query failed:', err);
-          });
+          };
+        }).catch(err => {
+          console.warn("Permissions API query failed:", err);
+        });
       } catch (err) {
-        console.warn('Permissions API not supported:', err);
+        console.warn("Permissions API not supported:", err);
       }
     }
 
     // Setup Speech Recognition
     if ('webkitSpeechRecognition' in window || 'SpeechRecognition' in window) {
-      const SpeechRecognition =
-        (window as any).webkitSpeechRecognition || (window as any).SpeechRecognition;
+      const SpeechRecognition = (window as any).webkitSpeechRecognition || (window as any).SpeechRecognition;
       recognitionRef.current = new SpeechRecognition();
       recognitionRef.current.continuous = true; // Keep listening until manually stopped
       recognitionRef.current.interimResults = true; // Get interim results for better UX
 
       // Set language based on target language
       const langMap: Record<string, string> = {
-        English: 'en-US',
-        Russian: 'ru-RU',
-        Spanish: 'es-ES',
-        French: 'fr-FR',
-        German: 'de-DE',
-        Italian: 'it-IT',
-        Chinese: 'zh-CN',
-        Japanese: 'ja-JP',
+        'English': 'en-US',
+        'Russian': 'ru-RU',
+        'Spanish': 'es-ES',
+        'French': 'fr-FR',
+        'German': 'de-DE',
+        'Italian': 'it-IT',
+        'Chinese': 'zh-CN',
+        'Japanese': 'ja-JP'
       };
       recognitionRef.current.lang = langMap[targetLang] || 'en-US';
       console.log('Speech recognition configured with lang:', recognitionRef.current.lang);
@@ -386,12 +453,10 @@ export default function App() {
         if (event.error === 'no-speech') {
           console.log('No speech detected - try speaking louder or check microphone');
         } else if (event.error === 'not-allowed') {
-          setAuthError(
-            'Microphone access denied. Please allow microphone access in your browser settings to use voice features.'
-          );
+          setAuthError("Microphone access denied. Please allow microphone access in your browser settings to use voice features.");
           setIsVoiceMode(false);
         } else if (event.error === 'audio-capture') {
-          setAuthError('No microphone found. Please connect a microphone and try again.');
+          setAuthError("No microphone found. Please connect a microphone and try again.");
         }
         setIsListening(false);
       };
@@ -413,7 +478,7 @@ export default function App() {
         if (cleanUser) {
           localStorage.setItem('lumie_user', JSON.stringify(cleanUser));
           fetchProgress(cleanUser.id);
-
+          
           if (!cleanUser.is_onboarded) {
             setShowOnboarding(true);
           } else {
@@ -437,42 +502,39 @@ export default function App() {
   const googleInitialized = useRef(false);
 
   // Handle Google credential response
-  const handleGoogleCredential = useCallback(
-    async (credential: string) => {
-      setAuthError(null);
-      try {
-        const res = await fetch('/api/auth/google', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ credential }),
-        });
+  const handleGoogleCredential = useCallback(async (credential: string) => {
+    setAuthError(null);
+    try {
+      const res = await fetch('/api/auth/google', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ credential })
+      });
 
-        const data = await res.json();
+      const data = await res.json();
 
-        if (data.error) {
-          setAuthError(data.error);
-          return;
-        }
-
-        const cleanUser = cleanUserData(data);
-        setUser(cleanUser);
-        if (cleanUser) {
-          localStorage.setItem('lumie_user', JSON.stringify(cleanUser));
-          fetchProgress(cleanUser.id);
-
-          if (!cleanUser.is_onboarded) {
-            setShowOnboarding(true);
-          } else {
-            fetchConversations(cleanUser.id);
-          }
-        }
-      } catch (err) {
-        console.error('Google Sign-In failed:', err);
-        setAuthError(t('auth.error.connection'));
+      if (data.error) {
+        setAuthError(data.error);
+        return;
       }
-    },
-    [t]
-  );
+
+      const cleanUser = cleanUserData(data);
+      setUser(cleanUser);
+      if (cleanUser) {
+        localStorage.setItem('lumie_user', JSON.stringify(cleanUser));
+        fetchProgress(cleanUser.id);
+
+        if (!cleanUser.is_onboarded) {
+          setShowOnboarding(true);
+        } else {
+          fetchConversations(cleanUser.id);
+        }
+      }
+    } catch (err) {
+      console.error('Google Sign-In failed:', err);
+      setAuthError(t('auth.error.connection'));
+    }
+  }, [t]);
 
   // Initialize Google Sign-In
   useEffect(() => {
@@ -514,7 +576,7 @@ export default function App() {
                 handleGoogleCredential(response.credential);
               }
             },
-            auto_select: false,
+            auto_select: false
           });
 
           googleInitialized.current = true;
@@ -528,7 +590,7 @@ export default function App() {
               text: 'signin_with',
               shape: 'rectangular',
               logo_alignment: 'left',
-              width: 280,
+              width: 280
             });
           }
         }
@@ -543,11 +605,7 @@ export default function App() {
 
   // Re-render Google button when ref changes and Google is initialized
   useEffect(() => {
-    if (
-      googleButtonRef.current &&
-      googleInitialized.current &&
-      (window as any).google?.accounts?.id
-    ) {
+    if (googleButtonRef.current && googleInitialized.current && (window as any).google?.accounts?.id) {
       (window as any).google.accounts.id.renderButton(googleButtonRef.current, {
         theme: 'filled_blue',
         size: 'large',
@@ -555,7 +613,7 @@ export default function App() {
         text: 'signin_with',
         shape: 'rectangular',
         logo_alignment: 'left',
-        width: 280,
+        width: 280
       });
     }
   });
@@ -577,11 +635,8 @@ export default function App() {
       const res = await fetch(`/api/conversations/user/${userId}`);
       const data = await res.json();
       setConversations(data);
-      // Auto-select most recent conversation if none selected
-      if (data.length > 0 && !currentConversationId) {
-        setCurrentConversationId(data[0].id);
-        fetchMessages(data[0].id);
-      }
+      // We no longer auto-select the most recent conversation to ensure 
+      // only the current session's dialog is opened.
     } catch (err) {
       console.error('Failed to fetch conversations:', err);
     }
@@ -598,7 +653,7 @@ export default function App() {
     await fetch('/api/user/complete-topic', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ userId: user.id, topicId }),
+      body: JSON.stringify({ userId: user.id, topicId })
     });
     setCompletedTopics(prev => [...prev, topicId]);
   };
@@ -617,7 +672,7 @@ export default function App() {
       await fetch('/api/conversations', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ id, user_id: user.id, title }),
+        body: JSON.stringify({ id, user_id: user.id, title })
       });
       setCurrentConversationId(id);
       setMessages([]); // Clear messages for new session
@@ -629,6 +684,50 @@ export default function App() {
       setTimeout(() => triggerAiGreeting(id), 500);
     } catch (err) {
       console.error('Failed to create conversation:', err);
+    }
+  };
+
+  const processAndSaveFacts = async (text: string) => {
+    if (!user || !text.trim()) return;
+    
+    try {
+      console.log('Extracting facts from text:', text.substring(0, 100) + '...');
+      const facts = await extractFacts(text);
+      
+      if (facts && facts.length > 0) {
+        console.log('Extracted facts to remember:', facts);
+        for (const fact of facts) {
+          // If we found the user's name, update the user record too
+          if ((fact.topic.toLowerCase().includes('name') || fact.topic.toLowerCase().includes('user_name')) && fact.text.length < 50) {
+            console.log('Updating user name based on extracted fact:', fact.text);
+            fetch('/api/user/onboard', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ userId: user.id, name: fact.text })
+            }).then(res => res.json()).then(updated => {
+              if (updated && !updated.error) {
+                const clean = cleanUserData(updated);
+                setUser(clean);
+                localStorage.setItem('lumie_user', JSON.stringify(clean));
+              }
+            });
+          }
+
+          const factEmbedding = await generateEmbedding(fact.text);
+          await fetch('/api/memory/add', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ 
+              userId: user.id, 
+              text: fact.text, 
+              topic: fact.topic, 
+              embedding: factEmbedding 
+            })
+          });
+        }
+      }
+    } catch (error) {
+      console.error('Error in processAndSaveFacts:', error);
     }
   };
 
@@ -651,7 +750,7 @@ export default function App() {
       const memRes = await fetch('/api/memory/search', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ userId: user.id, embedding: new Array(768).fill(0) }), // Dummy embedding for general search
+        body: JSON.stringify({ userId: user.id, embedding: [] }) // Empty array triggers "latest" search in server
       });
       const memories = await memRes.json();
 
@@ -662,7 +761,7 @@ export default function App() {
         conversation_id: convId,
         role: 'assistant',
         content: '',
-        type: 'text',
+        type: 'text'
       };
       setMessages([initialAiMsg]);
 
@@ -670,12 +769,13 @@ export default function App() {
         const text = chunk.text;
         if (text) {
           fullAiText += text;
+          const cleanedText = cleanAiResponse(fullAiText);
           setMessages(prev => {
             const newMsgs = [...prev];
             if (newMsgs.length > 0 && newMsgs[newMsgs.length - 1].role === 'assistant') {
               newMsgs[newMsgs.length - 1] = {
                 ...newMsgs[newMsgs.length - 1],
-                content: fullAiText,
+                content: cleanedText
               };
             }
             return newMsgs;
@@ -685,44 +785,39 @@ export default function App() {
       }
 
       processStreamText(fullAiText, true);
+      const finalCleanedText = cleanAiResponse(fullAiText);
       setIsStreamFinished(true);
 
       const finalAiMsg = {
         conversation_id: convId,
         role: 'assistant',
-        content: fullAiText,
-        type: 'text',
+        content: finalCleanedText,
+        type: 'text'
       };
 
       await fetch('/api/messages', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(finalAiMsg),
+        body: JSON.stringify(finalAiMsg)
       });
     } catch (error: any) {
       console.error('Error in triggerAiGreeting:', error);
 
       // Check for rate limit error (429)
       const errorStr = error?.message || error?.toString() || '';
-      if (
-        errorStr.includes('429') ||
-        errorStr.includes('RESOURCE_EXHAUSTED') ||
-        errorStr.includes('quota')
-      ) {
+      if (errorStr.includes('429') || errorStr.includes('RESOURCE_EXHAUSTED') || errorStr.includes('quota')) {
         // Extract retry delay if available
         const retryMatch = errorStr.match(/retry in (\d+)/i);
         const retrySeconds = retryMatch ? parseInt(retryMatch[1]) : 60;
         setRateLimitError(t('error.rateLimit', { seconds: retrySeconds }));
 
         // Show a friendly message to the user
-        setMessages([
-          {
-            conversation_id: convId,
-            role: 'assistant',
-            content: `⏳ ${t('error.rateLimitMessage')}`,
-            type: 'text',
-          },
-        ]);
+        setMessages([{
+          conversation_id: convId,
+          role: 'assistant',
+          content: `⏳ ${t('error.rateLimitMessage')}`,
+          type: 'text'
+        }]);
       }
     } finally {
       setIsLoading(false);
@@ -730,19 +825,21 @@ export default function App() {
   };
 
   useEffect(() => {
-    if (
-      currentConversationId &&
-      messages.length === 0 &&
-      !isLoading &&
-      greetingAttemptedRef.current !== currentConversationId
-    ) {
+    if (currentConversationId && messages.length === 0 && !isLoading && greetingAttemptedRef.current !== currentConversationId) {
       // If we just opened an empty conversation, let AI speak first
       triggerAiGreeting(currentConversationId);
     }
   }, [currentConversationId, messages.length, isLoading]);
 
+  const liveTranscriptRef = useRef<string>('');
+
   const toggleUltraFastMode = async () => {
     if (isUltraFastMode) {
+      // Save transcript to memory when ending session
+      if (liveTranscriptRef.current) {
+        processAndSaveFacts(liveTranscriptRef.current);
+        liveTranscriptRef.current = '';
+      }
       liveServiceRef.current?.disconnect();
       pcmPlayerRef.current?.stop();
       setIsUltraFastMode(false);
@@ -754,7 +851,7 @@ export default function App() {
       setIsSpeaking(false);
       if (audioRef.current) {
         audioRef.current.pause();
-        audioRef.current.src = '';
+        audioRef.current.src = "";
       }
 
       setIsUltraFastMode(true);
@@ -767,8 +864,8 @@ export default function App() {
           fetch(`/api/memory/search`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ userId: user.id, embedding: new Array(768).fill(0) }),
-          }),
+            body: JSON.stringify({ userId: user.id, embedding: [] })
+          })
         ]);
 
         if (!apiKeyRes.ok) {
@@ -778,16 +875,17 @@ export default function App() {
 
         const { key: apiKey } = await apiKeyRes.json();
         const memories = await memRes.json();
-        const memoryText = memories.map((m: any) => `- ${m.topic}: ${m.summary}`).join('\n');
-
-        const systemPrompt = TUTOR_SYSTEM_INSTRUCTION.replace(/{{name}}/g, user?.name || 'Student')
-          .replace(/{{native_lang}}/g, nativeLang)
-          .replace(/{{target_lang}}/g, targetLang)
-          .replace(/{{level}}/g, user?.level || 'beginner')
-          .replace(
-            /{{memories}}/g,
-            memoryText || 'No memories yet. Ask the user about themselves!'
-          );
+        
+        const systemPrompt = getSystemPrompt(
+          { 
+            ...user, 
+            voice: user?.voice || voice,
+            native_lang: nativeLang,
+            target_lang: targetLang,
+            level: user?.level || 'beginner'
+          }, 
+          memories
+        );
 
         if (!liveServiceRef.current) {
           liveServiceRef.current = new GeminiLiveService(apiKey);
@@ -797,40 +895,44 @@ export default function App() {
         }
 
         await liveServiceRef.current.connect(
-          { systemInstruction: systemPrompt },
+          { systemInstruction: systemPrompt, voice: user?.voice || voice },
           {
-            onAudioData: base64 => pcmPlayerRef.current?.playChunk(base64),
+            onAudioData: (base64) => pcmPlayerRef.current?.playChunk(base64),
             onInterrupted: () => pcmPlayerRef.current?.stop(),
             onTranscription: (text, isFinal, role) => {
+              if (isFinal) {
+                liveTranscriptRef.current += `${role === 'user' ? 'User' : 'AI'}: ${text}\n`;
+              }
               if (isFinal && role === 'model') {
+                const cleanedText = cleanAiResponse(text);
                 const aiMsg: Message = {
                   id: Date.now(),
                   conversation_id: currentConversationId || 'temp',
                   role: 'assistant',
-                  content: text,
+                  content: cleanedText,
                   type: 'voice',
-                  created_at: new Date().toISOString(),
+                  created_at: new Date().toISOString()
                 };
                 setMessages(prev => {
                   // Avoid duplicate messages if the transcription comes in chunks
                   const last = prev[prev.length - 1];
-                  if (last && last.role === 'assistant' && last.content === text) return prev;
+                  if (last && last.role === 'assistant' && last.content === cleanedText) return prev;
                   return [...prev, aiMsg];
                 });
               }
             },
             onError: (err: any) => {
               const errorMessage = err instanceof Error ? err.message : String(err);
-              console.error('Live API Error:', errorMessage);
+              console.error("Live API Error:", errorMessage);
               setAuthError(`Live API Error: ${errorMessage}`);
               setIsUltraFastMode(false);
             },
-            onClose: () => setIsUltraFastMode(false),
+            onClose: () => setIsUltraFastMode(false)
           }
         );
       } catch (err: any) {
-        console.error('Failed to start Ultra-Fast mode:', err);
-        setAuthError(err.message || 'Failed to start Ultra-Fast mode');
+        console.error("Failed to start Ultra-Fast mode:", err);
+        setAuthError(err.message || "Failed to start Ultra-Fast mode");
         setIsUltraFastMode(false);
         setIsVoiceMode(false);
       }
@@ -845,12 +947,10 @@ export default function App() {
       setAuthError(null);
       return true;
     } catch (err: any) {
-      console.error('Permission request failed:', err);
+      console.error("Permission request failed:", err);
       setMicPermission('denied');
       if (err.name === 'NotAllowedError' || err.name === 'PermissionDeniedError') {
-        setAuthError(
-          "Microphone access denied. Please click the lock icon in your browser's address bar and set Microphone to 'Allow'."
-        );
+        setAuthError("Microphone access denied. Please click the lock icon in your browser's address bar and set Microphone to 'Allow'.");
       }
       return false;
     }
@@ -858,50 +958,48 @@ export default function App() {
 
   const toggleListening = async () => {
     if (!isSpeechSupported || !recognitionRef.current) {
-      console.warn('Speech recognition not supported or not initialized');
-      setAuthError(
-        'Speech recognition is not supported in this browser. Please use Chrome or Edge.'
-      );
+      console.warn("Speech recognition not supported or not initialized");
+      setAuthError("Speech recognition is not supported in this browser. Please use Chrome or Edge.");
       return;
     }
 
     // Request permission if not already granted
     if (micPermission !== 'granted') {
-      console.log('Requesting microphone permission...');
+      console.log("Requesting microphone permission...");
       const granted = await requestMicPermission();
       if (!granted) {
-        console.warn('Microphone permission not granted');
+        console.warn("Microphone permission not granted");
         return;
       }
     }
 
     if (isListening) {
-      console.log('Stopping speech recognition...');
+      console.log("Stopping speech recognition...");
       // Give a moment for final results to come through, then stop
       setTimeout(() => {
         const pendingTranscript = lastTranscriptRef.current;
         if (pendingTranscript) {
-          console.log('Using pending transcript:', pendingTranscript);
+          console.log("Using pending transcript:", pendingTranscript);
           setInput(pendingTranscript);
           lastTranscriptRef.current = '';
         }
         recognitionRef.current?.stop();
       }, 300); // Wait 300ms for results
     } else {
-      console.log('Starting speech recognition...');
-      console.log('Recognition language:', recognitionRef.current?.lang);
+      console.log("Starting speech recognition...");
+      console.log("Recognition language:", recognitionRef.current?.lang);
       lastTranscriptRef.current = ''; // Clear any previous transcript
       setIsListening(true);
       try {
         recognitionRef.current.start();
       } catch (err: any) {
-        console.error('Failed to start recognition:', err);
+        console.error("Failed to start recognition:", err);
         if (err.name === 'NotAllowedError') {
           setMicPermission('denied');
-          setAuthError('Microphone access denied. Please allow it in browser settings.');
+          setAuthError("Microphone access denied. Please allow it in browser settings.");
         } else if (err.name === 'InvalidStateError') {
           // Recognition already started, ignore
-          console.log('Recognition already in progress');
+          console.log("Recognition already in progress");
         } else {
           setAuthError(`Speech recognition error: ${err.message || err.name}`);
         }
@@ -910,8 +1008,18 @@ export default function App() {
     }
   };
 
+  const cleanAiResponse = (text: string) => {
+    return text
+      .replace(/\*[^*]+\*/g, '')
+      .replace(/Haha!|Hehe!|Wow!/gi, '')
+      .replace(/I've registered the greeting|I'm composing a response|confirmed the language parameters|plan to use a casual|aim for clarity|I'll use the user's name|I'll refer to the memory|I'll focus on|I'll start by|I'll provide a|I'll explain the/gi, '')
+      .trim();
+  };
+
   const processStreamText = (fullText: string, isFinal = false) => {
-    const textToProcess = fullText.substring(lastProcessedIndexRef.current);
+    // Strip out emotional markers like *laughs* or *claps hands*
+    const cleanText = cleanAiResponse(fullText);
+    const textToProcess = cleanText.substring(lastProcessedIndexRef.current);
     // Regex to find sentences: look for punctuation followed by space or end of string
     const regex = /[^.!?]+[.!?]+(?=\s|$)/g;
     let match;
@@ -947,7 +1055,7 @@ export default function App() {
     e?.preventDefault();
     const messageContent = overrideInput || input;
     console.log('handleSendMessage called:', { messageContent, isLoading, isVoiceMode });
-
+    
     if (!messageContent.trim() || isLoading || !user) {
       console.log('handleSendMessage aborted: empty content, loading, or no user');
       return;
@@ -974,7 +1082,7 @@ export default function App() {
         await fetch('/api/conversations', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ id, user_id: user.id, title: messageContent.substring(0, 30) }),
+          body: JSON.stringify({ id, user_id: user.id, title: messageContent.substring(0, 30) })
         });
         convId = id;
         setCurrentConversationId(id);
@@ -985,19 +1093,14 @@ export default function App() {
       }
     }
 
-    const userMsg: Message = {
-      conversation_id: convId,
-      role: 'user',
-      content: messageContent,
-      type: 'text',
-    };
+    const userMsg: Message = { conversation_id: convId, role: 'user', content: messageContent, type: 'text' };
     setMessages(prev => [...prev, userMsg]);
     if (!overrideInput) setInput('');
     setIsLoading(true);
 
     try {
       console.log('Starting parallel tasks (saving message + vector memory search)...');
-
+      
       // 1. Generate embedding for current message
       const embedding = await generateEmbedding(messageContent);
 
@@ -1006,13 +1109,13 @@ export default function App() {
         fetch('/api/messages', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify(userMsg),
+          body: JSON.stringify(userMsg)
         }),
         fetch('/api/memory/search', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ userId: user.id, embedding }),
-        }),
+          body: JSON.stringify({ userId: user.id, embedding })
+        })
       ]);
 
       let memories = [];
@@ -1026,18 +1129,18 @@ export default function App() {
 
       console.log('Generating tutor response stream...');
       const history = messages.concat(userMsg).map(m => ({ role: m.role, content: m.content }));
-
+      
       const stream = await generateTutorResponseStream(history, user, memories);
       console.log('Stream received, starting iteration...');
-
+      
       let fullAiText = '';
-
+      
       // Initial empty AI message
-      const initialAiMsg: Message = {
-        conversation_id: convId,
-        role: 'assistant',
-        content: '',
-        type: 'text',
+      const initialAiMsg: Message = { 
+        conversation_id: convId, 
+        role: 'assistant', 
+        content: '', 
+        type: 'text' 
       };
       setMessages(prev => [...prev, initialAiMsg]);
 
@@ -1046,86 +1149,50 @@ export default function App() {
           const text = chunk.text;
           if (text) {
             fullAiText += text;
+            const cleanedText = cleanAiResponse(fullAiText);
             setMessages(prev => {
               const newMsgs = [...prev];
               // Ensure we are updating the correct message (the last one we added)
               if (newMsgs.length > 0 && newMsgs[newMsgs.length - 1].role === 'assistant') {
-                newMsgs[newMsgs.length - 1] = {
-                  ...newMsgs[newMsgs.length - 1],
-                  content: fullAiText,
-                  type: fullAiText.includes('### Theory') ? 'theory' : 'text',
+                newMsgs[newMsgs.length - 1] = { 
+                  ...newMsgs[newMsgs.length - 1], 
+                  content: cleanedText,
+                  type: cleanedText.includes('### Theory') ? 'theory' : 'text'
                 };
               }
               return newMsgs;
             });
-
+            
             processStreamText(fullAiText);
           }
         }
         console.log('Stream iteration finished successfully.');
       } catch (streamError) {
         console.error('Error during stream iteration:', streamError);
-        setAuthError('Ошибка при получении ответа от AI. Попробуйте еще раз.');
+        setAuthError("Ошибка при получении ответа от AI. Попробуйте еще раз.");
       }
 
       // Final processing for any remaining text
       processStreamText(fullAiText, true);
+      const finalCleanedText = cleanAiResponse(fullAiText);
       setIsStreamFinished(true);
 
-      const finalAiMsg = {
-        conversation_id: convId,
-        role: 'assistant',
-        content: fullAiText,
-        type: fullAiText.includes('### Theory') ? 'theory' : 'text',
+      const finalAiMsg = { 
+        conversation_id: convId, 
+        role: 'assistant', 
+        content: finalCleanedText, 
+        type: finalCleanedText.includes('### Theory') ? 'theory' : 'text' 
       };
 
       // Save final message
       await fetch('/api/messages', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(finalAiMsg),
+        body: JSON.stringify(finalAiMsg)
       });
 
       // --- FACT EXTRACTION & MEMORY STORAGE ---
-      const facts = await extractFacts(`User: ${messageContent}\nAI: ${fullAiText}`);
-      if (facts && facts.length > 0) {
-        console.log('Extracted facts to remember:', facts);
-        for (const fact of facts) {
-          // If we found the user's name, update the user record too
-          if (
-            (fact.topic.toLowerCase().includes('name') ||
-              fact.topic.toLowerCase().includes('user_name')) &&
-            fact.text.length < 50
-          ) {
-            console.log('Updating user name based on extracted fact:', fact.text);
-            fetch('/api/user/onboard', {
-              method: 'POST',
-              headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify({ userId: user.id, name: fact.text }),
-            })
-              .then(res => res.json())
-              .then(updated => {
-                if (updated && !updated.error) {
-                  const clean = cleanUserData(updated);
-                  setUser(clean);
-                  localStorage.setItem('lumie_user', JSON.stringify(clean));
-                }
-              });
-          }
-
-          const factEmbedding = await generateEmbedding(fact.text);
-          await fetch('/api/memory/add', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-              userId: user.id,
-              text: fact.text,
-              topic: fact.topic,
-              embedding: factEmbedding,
-            }),
-          });
-        }
-      }
+      processAndSaveFacts(`User: ${messageContent}\nAI: ${fullAiText}`);
     } catch (error) {
       console.error('Error in handleSendMessage:', error);
     } finally {
@@ -1136,18 +1203,17 @@ export default function App() {
   useEffect(() => {
     if (recognitionRef.current) {
       const langMap: Record<string, string> = {
-        English: 'en-US',
-        Russian: 'ru-RU',
-        Spanish: 'es-ES',
-        French: 'fr-FR',
-        German: 'de-DE',
-        Italian: 'it-IT',
-        Chinese: 'zh-CN',
-        Japanese: 'ja-JP',
+        'English': 'en-US',
+        'Russian': 'ru-RU',
+        'Spanish': 'es-ES',
+        'French': 'fr-FR',
+        'German': 'de-DE',
+        'Italian': 'it-IT',
+        'Chinese': 'zh-CN',
+        'Japanese': 'ja-JP'
       };
       const selectedLang = recognitionLang === 'target' ? targetLang : nativeLang;
-      recognitionRef.current.lang =
-        langMap[selectedLang] || (recognitionLang === 'target' ? 'en-US' : 'ru-RU');
+      recognitionRef.current.lang = langMap[selectedLang] || (recognitionLang === 'target' ? 'en-US' : 'ru-RU');
     }
   }, [targetLang, nativeLang, recognitionLang]);
 
@@ -1162,11 +1228,11 @@ export default function App() {
       const res = await fetch('/api/user/onboard', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ userId: user.id, ...data }),
+        body: JSON.stringify({ userId: user.id, ...data })
       });
       if (!res.ok) throw new Error('Failed to onboard');
       const updatedUser = await res.json();
-
+      
       // Clean user object to prevent circular structure errors
       const cleanUser = {
         id: updatedUser.id,
@@ -1180,7 +1246,7 @@ export default function App() {
         is_onboarded: updatedUser.is_onboarded,
         age: updatedUser.age,
         gender: updatedUser.gender,
-        avatar: updatedUser.avatar,
+        avatar: updatedUser.avatar
       };
 
       console.log('Onboarding successful, updated user:', cleanUser);
@@ -1191,23 +1257,19 @@ export default function App() {
       setTargetLang(cleanUser.target_lang);
       fetchConversations(cleanUser.id);
       fetchProgress(cleanUser.id);
-
+      
       // Automatically create first conversation
       const id = Math.random().toString(36).substring(7);
       await fetch('/api/conversations', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          id,
-          user_id: cleanUser.id,
-          title: `First Session with ${cleanUser.name}`,
-        }),
+        body: JSON.stringify({ id, user_id: cleanUser.id, title: `First Session with ${cleanUser.name}` })
       });
       setCurrentConversationId(id);
       fetchConversations(cleanUser.id);
     } catch (err) {
       console.error('Onboarding failed:', err);
-      alert('Something went wrong during onboarding. Please try again.');
+      alert("Something went wrong during onboarding. Please try again.");
     }
   };
 
@@ -1243,48 +1305,53 @@ export default function App() {
   };
 
   if (showOnboarding) {
-    return <Onboarding user={user} onComplete={handleOnboardingComplete} onLogout={handleLogout} />;
+    return (
+      <Onboarding 
+        user={user} 
+        onComplete={handleOnboardingComplete} 
+        onLogout={handleLogout}
+      />
+    );
   }
 
   if (!user) {
     return (
-      <div className="flex h-screen items-center justify-center bg-[#FDFCFB]">
-        <motion.div
+      <div className="h-screen flex items-center justify-center bg-[#FDFCFB]">
+        <motion.div 
           initial={{ scale: 0.9, opacity: 0 }}
           animate={{ scale: 1, opacity: 1 }}
-          className="w-full max-w-md rounded-[2.5rem] border border-orange-100/50 bg-white p-12 text-center shadow-2xl shadow-orange-900/5"
+          className="bg-white p-12 rounded-[2.5rem] shadow-2xl shadow-orange-900/5 text-center max-w-md w-full border border-orange-100/50"
         >
-          <div className="mx-auto mb-8 flex h-20 w-20 items-center justify-center rounded-3xl bg-[#2D2D2D] shadow-xl shadow-black/10">
-            <Sparkles className="h-10 w-10 text-orange-200" />
+          <div className="w-20 h-20 bg-[#2D2D2D] rounded-3xl flex items-center justify-center mx-auto mb-8 shadow-xl shadow-black/10">
+            <Sparkles className="w-10 h-10 text-orange-200" />
           </div>
-          <h1 className="mb-4 font-serif text-4xl font-bold tracking-tight text-[#2D2D2D]">
-            {t('app.name')}
-          </h1>
-          <p className="mb-10 text-sm leading-relaxed text-black/40">
+          <h1 className="font-serif text-4xl font-bold mb-4 tracking-tight text-[#2D2D2D]">{t('app.name')}</h1>
+          <p className="text-black/40 mb-10 text-sm leading-relaxed">
             {t('app.tagline')}. {t('app.subtitle')}
           </p>
-
+          
           {authError && (
-            <div className="mb-6 rounded-xl border border-red-100 bg-red-50 p-4 text-xs font-medium text-red-600">
+            <div className="mb-6 p-4 bg-red-50 border border-red-100 rounded-xl text-red-600 text-xs font-medium">
               {authError}
             </div>
           )}
 
           {micPermission === 'denied' && (
-            <div className="mb-6 flex flex-col gap-3 rounded-xl border border-amber-100 bg-amber-50 p-4 text-xs font-medium text-amber-700">
+            <div className="mb-6 p-4 bg-amber-50 border border-amber-100 rounded-xl text-amber-700 text-xs font-medium flex flex-col gap-3">
               <div className="flex items-center gap-3">
-                <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-amber-500">
-                  <Mic className="h-4 w-4 text-white" />
+                <div className="w-8 h-8 bg-amber-500 rounded-full flex items-center justify-center shrink-0">
+                  <Mic className="w-4 h-4 text-white" />
                 </div>
-                <p className="text-left font-bold">Microphone access is blocked!</p>
+                <p className="text-left font-bold">
+                  Microphone access is blocked!
+                </p>
               </div>
               <p className="text-left text-[10px] leading-relaxed opacity-80">
-                To fix this: Click the <b>Lock 🔒</b> icon in your browser's address bar (top left)
-                and set <b>Microphone</b> to <b>Allow</b>. Then refresh the page.
+                To fix this: Click the <b>Lock 🔒</b> icon in your browser's address bar (top left) and set <b>Microphone</b> to <b>Allow</b>. Then refresh the page.
               </p>
-              <button
+              <button 
                 onClick={requestMicPermission}
-                className="mt-1 rounded-lg bg-amber-600 px-4 py-2 text-[10px] font-bold tracking-widest text-white uppercase transition-all hover:bg-amber-700"
+                className="mt-1 py-2 px-4 bg-amber-600 text-white rounded-lg hover:bg-amber-700 transition-all text-[10px] font-bold uppercase tracking-widest"
               >
                 Try to Request Again
               </button>
@@ -1309,32 +1376,20 @@ export default function App() {
                   handleDemoLogin();
                 }
               }}
-              className="flex w-full items-center justify-center gap-3 rounded-2xl bg-[#2D2D2D] py-4 font-bold text-white shadow-lg shadow-black/10 transition-all hover:bg-[#3D3D3D]"
+              className="w-full py-4 bg-[#2D2D2D] text-white rounded-2xl font-bold hover:bg-[#3D3D3D] transition-all flex items-center justify-center gap-3 shadow-lg shadow-black/10"
             >
-              <svg className="h-5 w-5" viewBox="0 0 24 24">
-                <path
-                  fill="#4285F4"
-                  d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z"
-                />
-                <path
-                  fill="#34A853"
-                  d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z"
-                />
-                <path
-                  fill="#FBBC05"
-                  d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l2.85-2.22.81-.62z"
-                />
-                <path
-                  fill="#EA4335"
-                  d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z"
-                />
+              <svg className="w-5 h-5" viewBox="0 0 24 24">
+                <path fill="#4285F4" d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z"/>
+                <path fill="#34A853" d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z"/>
+                <path fill="#FBBC05" d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l2.85-2.22.81-.62z"/>
+                <path fill="#EA4335" d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z"/>
               </svg>
               {t('auth.continueWithGoogle')}
             </button>
 
             <button
               onClick={handleDemoLogin}
-              className="flex w-full items-center justify-center gap-3 rounded-2xl border border-black/10 bg-white py-4 font-bold text-black transition-all hover:bg-black/5"
+              className="w-full py-4 bg-white text-black border border-black/10 rounded-2xl font-bold hover:bg-black/5 transition-all flex items-center justify-center gap-3"
             >
               {t('auth.tryDemo')}
             </button>
@@ -1342,7 +1397,7 @@ export default function App() {
             {/* Hidden Google button for fallback */}
             <div ref={googleButtonRef} className="hidden" />
           </div>
-          <p className="mt-6 text-[10px] font-bold tracking-widest text-black/30 uppercase">
+          <p className="mt-6 text-[10px] text-black/30 uppercase tracking-widest font-bold">
             {t('auth.startJourney')}
           </p>
         </motion.div>
@@ -1353,7 +1408,7 @@ export default function App() {
   const handleSpeak = async (text: string) => {
     setIsSpeaking(true);
     try {
-      const speechResult = await generateSpeech(text);
+      const speechResult = await generateSpeech(text, user?.voice || voice);
       if (speechResult) {
         const { data, format } = speechResult;
         let audioUrl = '';
@@ -1364,11 +1419,11 @@ export default function App() {
           // Assume wav or other direct format from HF
           audioUrl = `data:audio/wav;base64,${data}`;
         }
-
+        
         if (audioRef.current) {
           audioRef.current.src = audioUrl;
           audioRef.current.play().catch(err => {
-            console.error('Playback failed:', err instanceof Error ? err.message : String(err));
+            console.error("Playback failed:", err instanceof Error ? err.message : String(err));
             setIsSpeaking(false);
           });
         } else {
@@ -1378,33 +1433,28 @@ export default function App() {
         setIsSpeaking(false);
       }
     } catch (error) {
-      console.error('Speech generation failed:', error);
+      console.error("Speech generation failed:", error);
       setIsSpeaking(false);
     }
   };
 
   return (
-    <div className="flex h-screen overflow-hidden bg-white font-sans text-[#1A1A1A]">
-      <audio
-        ref={audioRef}
+    <div className="flex h-screen bg-white overflow-hidden font-sans text-[#1A1A1A]">
+      <audio 
+        ref={audioRef} 
         onEnded={() => {
           setIsSpeaking(false);
-          if (
-            isVoiceModeRef.current &&
-            isStreamFinished &&
-            textQueue.length === 0 &&
-            audioQueue.length === 0
-          ) {
+          if (isVoiceModeRef.current && isStreamFinished && textQueue.length === 0 && audioQueue.length === 0) {
             toggleListening();
           }
-        }}
-        onError={e => {
-          console.error('Audio error occurred');
+        }} 
+        onError={(e) => {
+          console.error("Audio error occurred");
           setIsSpeaking(false);
         }}
-        className="hidden"
+        className="hidden" 
       />
-
+      
       {/* Sidebar - Minimalist */}
       <AnimatePresence mode="wait">
         {isSidebarOpen && (
@@ -1412,99 +1462,88 @@ export default function App() {
             initial={{ x: -300, opacity: 0 }}
             animate={{ x: 0, opacity: 1 }}
             exit={{ x: -300, opacity: 0 }}
-            className="z-20 flex w-72 flex-col border-r border-gray-100 bg-[#F9FAFB]"
+            className="w-72 bg-[#F9FAFB] border-r border-gray-100 flex flex-col z-20"
           >
-            <div className="flex items-center justify-between p-6">
+            <div className="p-6 flex items-center justify-between">
               <div className="flex items-center gap-2.5">
-                <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-orange-500 shadow-lg shadow-orange-500/20">
-                  <Sparkles className="h-5 w-5 text-white" />
+                <div className="w-9 h-9 bg-orange-500 rounded-xl flex items-center justify-center shadow-lg shadow-orange-500/20">
+                  <Sparkles className="w-5 h-5 text-white" />
                 </div>
-                <span className="text-xl font-bold tracking-tight">Lumie</span>
+                <span className="font-bold text-xl tracking-tight">Lumie</span>
               </div>
-              <button
+              <button 
                 onClick={() => setIsSidebarOpen(false)}
-                className="rounded-full p-2 hover:bg-gray-200 lg:hidden"
+                className="p-2 hover:bg-gray-200 rounded-full lg:hidden"
               >
-                <X className="h-5 w-5 text-gray-400" />
+                <X className="w-5 h-5 text-gray-400" />
               </button>
             </div>
 
-            <div className="space-y-2 p-4">
+            <div className="p-4 space-y-2">
               <button
                 onClick={() => setView('chat')}
                 className={cn(
-                  'flex w-full items-center gap-3 rounded-xl px-4 py-3 text-sm font-semibold transition-all',
-                  view === 'chat'
-                    ? 'bg-orange-500 text-white shadow-lg shadow-orange-500/20'
-                    : 'border border-gray-200 bg-white text-gray-700 hover:bg-gray-50'
+                  "w-full flex items-center gap-3 px-4 py-3 rounded-xl transition-all font-semibold text-sm",
+                  view === 'chat' ? "bg-orange-500 text-white shadow-lg shadow-orange-500/20" : "bg-white border border-gray-200 text-gray-700 hover:bg-gray-50"
                 )}
               >
-                <MessageSquare className="h-4 w-4" />
+                <MessageSquare className="w-4 h-4" />
                 {t('nav.conversation')}
               </button>
               <button
                 onClick={() => setView('curriculum')}
                 className={cn(
-                  'flex w-full items-center gap-3 rounded-xl px-4 py-3 text-sm font-semibold transition-all',
-                  view === 'curriculum'
-                    ? 'bg-orange-500 text-white shadow-lg shadow-orange-500/20'
-                    : 'border border-gray-200 bg-white text-gray-700 hover:bg-gray-50'
+                  "w-full flex items-center gap-3 px-4 py-3 rounded-xl transition-all font-semibold text-sm",
+                  view === 'curriculum' ? "bg-orange-500 text-white shadow-lg shadow-orange-500/20" : "bg-white border border-gray-200 text-gray-700 hover:bg-gray-50"
                 )}
               >
-                <BookOpen className="h-4 w-4" />
+                <BookOpen className="w-4 h-4" />
                 {t('nav.learningPath')}
               </button>
               <button
                 onClick={() => {
-                  setIsVoiceMode(true);
-                  setIsUltraFastMode(true);
+                  if (!isUltraFastMode) {
+                    toggleUltraFastMode();
+                  }
                 }}
                 className={cn(
-                  'flex w-full items-center gap-3 rounded-xl px-4 py-3 text-sm font-semibold transition-all',
-                  isVoiceMode
-                    ? 'bg-orange-500 text-white shadow-lg shadow-orange-500/20'
-                    : 'border border-gray-200 bg-white text-gray-700 hover:bg-gray-50'
+                  "w-full flex items-center gap-3 px-4 py-3 rounded-xl transition-all font-semibold text-sm",
+                  isVoiceMode ? "bg-orange-500 text-white shadow-lg shadow-orange-500/20" : "bg-white border border-gray-200 text-gray-700 hover:bg-gray-50"
                 )}
               >
-                <Sparkles className="h-4 w-4" />
+                <Sparkles className="w-4 h-4" />
                 {t('nav.lumieLive')}
               </button>
               <button
                 onClick={() => setIsSettingsOpen(true)}
                 className={cn(
-                  'flex w-full items-center gap-3 rounded-xl px-4 py-3 text-sm font-semibold transition-all',
-                  isSettingsOpen
-                    ? 'bg-orange-500 text-white shadow-lg shadow-orange-500/20'
-                    : 'border border-gray-200 bg-white text-gray-700 hover:bg-gray-50'
+                  "w-full flex items-center gap-3 px-4 py-3 rounded-xl transition-all font-semibold text-sm",
+                  isSettingsOpen ? "bg-orange-500 text-white shadow-lg shadow-orange-500/20" : "bg-white border border-gray-200 text-gray-700 hover:bg-gray-50"
                 )}
               >
-                <Settings className="h-4 w-4" />
+                <Settings className="w-4 h-4" />
                 {t('nav.settings')}
               </button>
             </div>
 
-            <div className="mt-auto space-y-3 border-t border-gray-100 p-4">
-              <div className="flex items-center gap-3 rounded-2xl border border-gray-100 bg-white p-2">
-                <div className="flex h-10 w-10 shrink-0 items-center justify-center overflow-hidden rounded-full border border-gray-50 bg-gray-100">
+            <div className="p-4 border-t border-gray-100 space-y-3 mt-auto">
+              <div className="flex items-center gap-3 p-2 bg-white rounded-2xl border border-gray-100">
+                <div className="w-10 h-10 rounded-full bg-gray-100 flex items-center justify-center overflow-hidden shrink-0 border border-gray-50">
                   {user.avatar ? (
-                    <img src={user.avatar} alt="Avatar" className="h-full w-full object-cover" />
+                    <img src={user.avatar} alt="Avatar" className="w-full h-full object-cover" />
                   ) : (
-                    <span className="text-xs font-bold text-gray-400">
-                      {user.name.substring(0, 2).toUpperCase()}
-                    </span>
+                    <span className="text-gray-400 font-bold text-xs">{user.name.substring(0, 2).toUpperCase()}</span>
                   )}
                 </div>
-                <div className="min-w-0 flex-1">
-                  <div className="truncate text-sm font-bold">{user.name}</div>
-                  <div className="text-[10px] font-bold tracking-wider text-gray-400 uppercase">
-                    {user.level || 'Beginner'}
-                  </div>
+                <div className="flex-1 min-w-0">
+                  <div className="text-sm font-bold truncate">{user.name}</div>
+                  <div className="text-[10px] text-gray-400 font-bold uppercase tracking-wider">{user.level || 'Beginner'}</div>
                 </div>
-                <button
+                <button 
                   onClick={handleLogout}
-                  className="p-2 text-gray-300 transition-all hover:text-red-500"
+                  className="p-2 text-gray-300 hover:text-red-500 transition-all"
                 >
-                  <LogOut className="h-4 w-4" />
+                  <LogOut className="w-4 h-4" />
                 </button>
               </div>
             </div>
@@ -1513,11 +1552,11 @@ export default function App() {
       </AnimatePresence>
 
       {/* Main Content */}
-      <main className="relative flex flex-1 flex-col overflow-hidden bg-white">
+      <main className="flex-1 flex flex-col relative bg-white overflow-hidden">
         {selectedTopic ? (
-          <LessonView
-            topic={selectedTopic}
-            user={user}
+          <LessonView 
+            topic={selectedTopic} 
+            user={user} 
             onClose={() => setSelectedTopic(null)}
             onComplete={() => {
               completeTopic(selectedTopic.id);
@@ -1526,606 +1565,548 @@ export default function App() {
             nativeLang={nativeLang}
             targetLang={targetLang}
             onSpeak={handleSpeak}
+            onFactExtracted={processAndSaveFacts}
           />
         ) : (
           <>
             {/* Header - Speak Style */}
-            <header className="sticky top-0 z-10 flex h-20 items-center justify-between bg-white/80 px-8 backdrop-blur-md">
-              <div className="flex items-center gap-4">
-                {!isSidebarOpen && (
-                  <button
-                    onClick={() => setIsSidebarOpen(true)}
-                    className="rounded-xl p-2.5 transition-all hover:bg-gray-100"
-                  >
-                    <Menu className="h-6 w-6 text-gray-400" />
-                  </button>
-                )}
-                <div className="flex items-center gap-2 rounded-2xl border border-gray-100 bg-gray-50 px-4 py-2">
-                  <Languages className="h-4 w-4 text-orange-500" />
-                  <span className="text-sm font-bold text-gray-700">{targetLang}</span>
-                  <span className="mx-1 text-gray-300">|</span>
-                  <span className="text-xs font-medium text-gray-400">{nativeLang}</span>
-                </div>
-              </div>
-
-              <div className="flex items-center gap-3">
-                <div className="hidden items-center gap-1.5 rounded-full border border-orange-100 bg-orange-50 px-3 py-1.5 text-orange-600 md:flex">
-                  <Sparkles className="h-3.5 w-3.5" />
-                  <span className="text-[11px] font-bold tracking-wider uppercase">
-                    7 Day Streak
-                  </span>
-                </div>
-              </div>
-            </header>
-
-            {/* Chat Area - Centered and Clean */}
-            {view === 'chat' ? (
-              <div className="scrollbar-hide mx-auto w-full max-w-3xl flex-1 space-y-10 overflow-y-auto p-8">
-                {messages.length === 0 ? (
-                  <div className="flex h-full flex-col items-center justify-center space-y-8 text-center">
-                    <motion.div
-                      initial={{ scale: 0.8, opacity: 0 }}
-                      animate={{ scale: 1, opacity: 1 }}
-                      className="flex h-24 w-24 items-center justify-center rounded-[2.5rem] bg-orange-50"
-                    >
-                      <Sparkles className="h-10 w-10 text-orange-500" />
-                    </motion.div>
-                    <div className="space-y-3">
-                      <h2 className="text-4xl font-bold tracking-tight text-gray-900">
-                        {t('chat.greeting', { name: user.name })}
-                      </h2>
-                      <p className="mx-auto max-w-sm text-lg text-gray-400">
-                        {t('chat.readyToPractice', { language: targetLang })}
-                      </p>
-                    </div>
-                    <div className="flex max-w-lg flex-wrap justify-center gap-3">
-                      {[
-                        t('chat.hints.hello', { language: targetLang }),
-                        t('chat.hints.coffeeShop'),
-                        t('chat.hints.grammar'),
-                        t('chat.hints.joke'),
-                      ].map(hint => (
-                        <button
-                          key={hint}
-                          onClick={() => setInput(hint)}
-                          className="rounded-2xl border border-gray-200 bg-white px-5 py-3 text-sm font-semibold text-gray-600 shadow-sm transition-all hover:border-orange-200 hover:bg-orange-50 hover:text-orange-700"
-                        >
-                          {hint}
-                        </button>
-                      ))}
-                    </div>
-                  </div>
-                ) : (
-                  messages.map((msg, idx) => (
-                    <motion.div
-                      initial={{ y: 20, opacity: 0 }}
-                      animate={{ y: 0, opacity: 1 }}
-                      key={idx}
-                      className={cn(
-                        'flex flex-col',
-                        msg.role === 'user' ? 'items-end' : 'items-start'
-                      )}
-                    >
-                      <div
-                        className={cn(
-                          'max-w-[85%] rounded-[2rem] px-6 py-4 text-base leading-relaxed shadow-sm',
-                          msg.role === 'user'
-                            ? 'rounded-tr-none bg-orange-500 font-medium text-white'
-                            : 'rounded-tl-none border border-gray-100 bg-gray-50 text-gray-800'
-                        )}
-                      >
-                        <div className="markdown-body">
-                          <Markdown>{msg.content}</Markdown>
-                        </div>
-                      </div>
-                      {msg.role === 'assistant' && (
-                        <div className="mt-3 ml-2 flex items-center gap-3">
-                          <button
-                            onClick={() => handleSpeak(msg.content)}
-                            className="rounded-xl border border-gray-100 bg-white p-2.5 text-gray-400 shadow-sm transition-all hover:bg-gray-50 hover:text-orange-500"
-                          >
-                            <Volume2 className="h-4 w-4" />
-                          </button>
-                          {msg.type === 'theory' && (
-                            <div className="flex items-center gap-1.5 rounded-full border border-blue-100 bg-blue-50 px-3 py-1 text-[10px] font-bold tracking-wider text-blue-600 uppercase">
-                              <BookOpen className="h-3.5 w-3.5" />
-                              Learning Card
-                            </div>
-                          )}
-                        </div>
-                      )}
-                    </motion.div>
-                  ))
-                )}
-                {isLoading && (
-                  <div className="flex flex-col items-start">
-                    <div className="flex items-center gap-1.5 rounded-[2rem] rounded-tl-none border border-gray-100 bg-gray-50 px-6 py-5">
-                      <div className="h-2 w-2 animate-bounce rounded-full bg-gray-300" />
-                      <div className="h-2 w-2 animate-bounce rounded-full bg-gray-300 [animation-delay:0.2s]" />
-                      <div className="h-2 w-2 animate-bounce rounded-full bg-gray-300 [animation-delay:0.4s]" />
-                    </div>
-                  </div>
-                )}
-                <div ref={messagesEndRef} />
-              </div>
-            ) : (
-              <div className="scrollbar-hide flex-1 overflow-y-auto p-8">
-                <div className="mx-auto max-w-4xl">
-                  <div className="mb-12">
-                    <h2 className="mb-2 text-3xl font-bold">Learning Path</h2>
-                    <p className="text-gray-400">
-                      Master {targetLang} following the CEFR curriculum.
-                    </p>
-                  </div>
-
-                  <div className="space-y-12">
-                    {CEFR_CURRICULUM.map(level => (
-                      <div
-                        key={level.level}
-                        className={cn(
-                          'relative rounded-[2.5rem] border-2 p-8 transition-all',
-                          user.level === level.level
-                            ? 'border-orange-200 bg-orange-50'
-                            : 'border-gray-100 bg-white opacity-60'
-                        )}
-                      >
-                        <div className="mb-8 flex items-center justify-between">
-                          <div>
-                            <div className="mb-1 flex items-center gap-3">
-                              <span className="text-4xl font-black text-orange-500">
-                                {level.level}
-                              </span>
-                              <h3 className="text-2xl font-bold">{level.name}</h3>
-                            </div>
-                            <p className="max-w-lg text-sm text-gray-500">{level.description}</p>
-                          </div>
-                          {user.level === level.level && (
-                            <div className="rounded-full bg-orange-500 px-4 py-2 text-xs font-bold tracking-widest text-white uppercase">
-                              Current Level
-                            </div>
-                          )}
-                        </div>
-
-                        <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
-                          {level.topics.map(topic => {
-                            const isCompleted = completedTopics.includes(topic.id);
-                            return (
-                              <div
-                                key={topic.id}
-                                onClick={() => setSelectedTopic(topic)}
-                                className={cn(
-                                  'group flex cursor-pointer items-center justify-between rounded-2xl border-2 p-6 transition-all',
-                                  isCompleted
-                                    ? 'border-emerald-100 bg-emerald-50'
-                                    : 'border-gray-100 bg-white hover:border-orange-200'
-                                )}
-                              >
-                                <div className="flex items-center gap-4">
-                                  <div
-                                    className={cn(
-                                      'flex h-12 w-12 items-center justify-center rounded-xl transition-all',
-                                      isCompleted
-                                        ? 'bg-emerald-500 text-white'
-                                        : 'bg-gray-100 text-gray-400 group-hover:bg-orange-100 group-hover:text-orange-500'
-                                    )}
-                                  >
-                                    {topic.category === 'grammar' && (
-                                      <BookOpen className="h-6 w-6" />
-                                    )}
-                                    {topic.category === 'vocabulary' && (
-                                      <Sparkles className="h-6 w-6" />
-                                    )}
-                                    {topic.category === 'conversation' && (
-                                      <MessageSquare className="h-6 w-6" />
-                                    )}
-                                  </div>
-                                  <div>
-                                    <h4 className="mb-0.5 text-sm font-bold">{topic.title}</h4>
-                                    <p className="text-xs text-gray-400">{topic.description}</p>
-                                  </div>
-                                </div>
-                                <button
-                                  onClick={e => {
-                                    e.stopPropagation();
-                                    isCompleted ? null : completeTopic(topic.id);
-                                  }}
-                                  className={cn(
-                                    'flex h-10 w-10 items-center justify-center rounded-full transition-all',
-                                    isCompleted
-                                      ? 'bg-emerald-100 text-emerald-600'
-                                      : 'bg-gray-50 text-gray-300 hover:bg-orange-500 hover:text-white'
-                                  )}
-                                >
-                                  {isCompleted ? (
-                                    <Check className="h-5 w-5" />
-                                  ) : (
-                                    <Plus className="h-5 w-5" />
-                                  )}
-                                </button>
-                              </div>
-                            );
-                          })}
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-                </div>
-              </div>
-            )}
-
-            {/* Input Area - Speak Style */}
-            {view === 'chat' && (
-              <div className="bg-white p-8">
-                <form
-                  onSubmit={handleSendMessage}
-                  className="relative mx-auto flex max-w-3xl items-center gap-4"
-                >
-                  <div className="relative flex-1">
-                    <input
-                      value={input}
-                      onChange={e => setInput(e.target.value)}
-                      placeholder={`Message Lumie in ${targetLang}...`}
-                      className="w-full rounded-[2rem] border border-gray-100 bg-gray-50 py-5 pr-28 pl-8 text-base transition-all outline-none focus:border-orange-200 focus:bg-white focus:ring-4 focus:ring-orange-500/5"
-                    />
-                    <div className="absolute top-1/2 right-3 flex -translate-y-1/2 items-center gap-1.5">
-                      <button
-                        type="button"
-                        onClick={toggleUltraFastMode}
-                        className={cn(
-                          'flex h-11 w-11 items-center justify-center rounded-full transition-all',
-                          isUltraFastMode
-                            ? 'bg-indigo-500 text-white shadow-lg shadow-indigo-500/20'
-                            : 'text-gray-300 hover:bg-indigo-50 hover:text-indigo-500'
-                        )}
-                        title="Ultra-Fast Mode"
-                      >
-                        <Sparkles className="h-5 w-5" />
-                      </button>
-                      <button
-                        type="button"
-                        onClick={toggleListening}
-                        className={cn(
-                          'flex h-11 w-11 items-center justify-center rounded-full transition-all',
-                          isListening
-                            ? 'animate-pulse bg-red-500 text-white shadow-lg shadow-red-500/20'
-                            : 'text-gray-300 hover:bg-orange-50 hover:text-orange-500'
-                        )}
-                      >
-                        <Mic className="h-5 w-5" />
-                      </button>
-                    </div>
-                  </div>
-                  <button
-                    type="submit"
-                    disabled={!input.trim() || isLoading}
-                    className="flex h-14 w-14 shrink-0 items-center justify-center rounded-[1.5rem] bg-orange-500 text-white shadow-lg shadow-orange-500/20 transition-all hover:bg-orange-600 disabled:opacity-20"
-                  >
-                    <Send className="h-6 w-6" />
-                  </button>
-                </form>
-              </div>
-            )}
-
-            {view === 'chat' && (
-              <div className="mx-auto mb-8 flex w-full max-w-3xl items-center justify-between px-8 text-[11px] font-bold tracking-widest text-gray-400 uppercase">
-                <div className="flex gap-6">
-                  <span>Shift + Enter for new line</span>
-                  <span>Lumie can make mistakes</span>
-                </div>
-                <div className="flex items-center gap-1.5">
-                  <div className="h-1.5 w-1.5 rounded-full bg-emerald-500 shadow-[0_0_8px_rgba(16,185,129,0.5)]" />
-                  System Ready
-                </div>
-              </div>
-            )}
-          </>
-        )}
-      </main>
-
-      {/* Voice Mode Overlay */}
-      <AnimatePresence>
-        {isVoiceMode && (
-          <motion.div
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            exit={{ opacity: 0 }}
-            className={cn(
-              'fixed inset-0 z-50 flex flex-col items-center justify-center text-white transition-colors duration-500',
-              isUltraFastMode ? 'bg-indigo-600' : 'bg-emerald-500'
-            )}
-          >
-            <button
-              onClick={() => {
-                if (isUltraFastMode) {
-                  toggleUltraFastMode();
-                } else {
-                  setIsVoiceMode(false);
-                }
-              }}
-              className="absolute top-8 right-8 rounded-full bg-white/10 p-3 transition-all hover:bg-white/20"
-            >
-              <X className="h-6 w-6" />
-            </button>
-
-            {isUltraFastMode && (
-              <div className="absolute top-8 left-8 flex items-center gap-2 rounded-full bg-white/20 px-3 py-1.5">
-                <div className="h-2 w-2 animate-pulse rounded-full bg-red-500" />
-                <span className="text-[10px] font-bold tracking-widest uppercase">
-                  Live Mode (Lumie AI)
-                </span>
-              </div>
-            )}
-
-            <div className="relative mb-12">
-              <motion.div
-                animate={{ scale: isUltraFastMode ? [1, 1.1, 1] : [1, 1.2, 1] }}
-                transition={{ repeat: Infinity, duration: isUltraFastMode ? 1 : 2 }}
-                className="flex h-32 w-32 items-center justify-center rounded-full bg-white/20"
+        <header className="h-20 flex items-center justify-between px-8 bg-white/80 backdrop-blur-md sticky top-0 z-10">
+          <div className="flex items-center gap-4">
+            {!isSidebarOpen && (
+              <button 
+                onClick={() => setIsSidebarOpen(true)}
+                className="p-2.5 hover:bg-gray-100 rounded-xl transition-all"
               >
-                <div className="flex h-24 w-24 items-center justify-center rounded-full bg-white/30">
-                  <div
-                    className={cn(
-                      'flex h-16 w-16 items-center justify-center rounded-full bg-white',
-                      isUltraFastMode ? 'text-indigo-600' : 'text-emerald-500'
-                    )}
-                  >
-                    {isUltraFastMode ? (
-                      <Sparkles className="h-8 w-8" />
-                    ) : isListening ? (
-                      <Mic className="h-8 w-8 animate-pulse" />
-                    ) : (
-                      <Volume2 className="h-8 w-8" />
-                    )}
-                  </div>
-                </div>
-              </motion.div>
-
-              {isListening && (
-                <div className="absolute -inset-4 animate-ping rounded-full border-2 border-white/30" />
-              )}
-            </div>
-
-            <div className="flex h-24 flex-col items-center justify-center px-6 text-center">
-              <h2 className="mb-2 font-serif text-3xl">
-                {isUltraFastMode
-                  ? 'Always Listening'
-                  : isListening
-                    ? "I'm listening..."
-                    : isSpeaking
-                      ? 'Lumie is speaking'
-                      : isLoading
-                        ? 'Thinking...'
-                        : 'Ready to talk'}
-              </h2>
-              <p className="max-w-xs text-sm text-white/60">
-                {isUltraFastMode
-                  ? 'Speak naturally, Lumie will respond instantly'
-                  : isListening
-                    ? 'Speak clearly in ' + (recognitionLang === 'target' ? targetLang : nativeLang)
-                    : 'Wait for Lumie to respond'}
-              </p>
-            </div>
-
-            {micPermission === 'denied' && (
-              <div className="mt-4 flex max-w-xs items-center gap-3 rounded-2xl border border-red-500/30 bg-red-500/20 px-6 py-3 text-xs font-medium text-white">
-                <Mic className="h-4 w-4 shrink-0 text-red-400" />
-                <p className="text-left">
-                  Microphone access is blocked. Please allow access in your browser settings.
-                </p>
-              </div>
-            )}
-
-            {!isUltraFastMode && (
-              <div className="mt-8 flex rounded-xl bg-white/10 p-1">
-                <button
-                  onClick={() => setRecognitionLang('target')}
-                  className={cn(
-                    'rounded-lg px-4 py-2 text-xs font-bold transition-all',
-                    recognitionLang === 'target'
-                      ? 'bg-white text-emerald-500'
-                      : 'text-white hover:bg-white/10'
-                  )}
-                >
-                  {targetLang}
-                </button>
-                <button
-                  onClick={() => setRecognitionLang('native')}
-                  className={cn(
-                    'rounded-lg px-4 py-2 text-xs font-bold transition-all',
-                    recognitionLang === 'native'
-                      ? 'bg-white text-emerald-500'
-                      : 'text-white hover:bg-white/10'
-                  )}
-                >
-                  {nativeLang}
-                </button>
-              </div>
-            )}
-
-            <div className="mt-12 flex h-10 items-center justify-center gap-2">
-              {[1, 2, 3, 4, 5].map(i => (
-                <motion.div
-                  key={i}
-                  animate={{ height: isListening || isSpeaking ? [10, 32, 10] : 10 }}
-                  transition={{ repeat: Infinity, duration: 0.5, delay: i * 0.1 }}
-                  className="w-1.5 rounded-full bg-white"
-                />
-              ))}
-            </div>
-
-            {isSpeaking && (
-              <button
-                onClick={() => {
-                  if (audioRef.current) {
-                    audioRef.current.pause();
-                    setIsSpeaking(false);
-                  }
-                }}
-                className="mt-12 rounded-full border border-white/20 px-6 py-2 text-sm font-medium transition-all hover:bg-white/10"
-              >
-                Stop Listening
+                <Menu className="w-6 h-6 text-gray-400" />
               </button>
             )}
-          </motion.div>
-        )}
-      </AnimatePresence>
-      {/* Settings Modal */}
-      <AnimatePresence>
-        {isSettingsOpen && (
-          <motion.div
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            exit={{ opacity: 0 }}
-            className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4 backdrop-blur-sm"
-          >
-            <motion.div
-              initial={{ scale: 0.95, y: 20 }}
-              animate={{ scale: 1, y: 0 }}
-              className="w-full max-w-md rounded-3xl bg-white p-8 shadow-2xl"
-            >
-              <div className="mb-6 flex items-center justify-between">
-                <h2 className="font-serif text-2xl font-bold">Learning Settings</h2>
-                <button
-                  onClick={() => setIsSettingsOpen(false)}
-                  className="rounded-full p-2 hover:bg-black/5"
+            <div className="flex items-center gap-2 px-4 py-2 bg-gray-50 rounded-2xl border border-gray-100">
+              <Languages className="w-4 h-4 text-orange-500" />
+              <span className="text-sm font-bold text-gray-700">{targetLang}</span>
+              <span className="text-gray-300 mx-1">|</span>
+              <span className="text-xs font-medium text-gray-400">{nativeLang}</span>
+            </div>
+          </div>
+
+          <div className="flex items-center gap-3">
+            <div className="hidden md:flex items-center gap-1.5 px-3 py-1.5 bg-orange-50 text-orange-600 rounded-full border border-orange-100">
+              <Sparkles className="w-3.5 h-3.5" />
+              <span className="text-[11px] font-bold uppercase tracking-wider">7 Day Streak</span>
+            </div>
+          </div>
+        </header>
+
+        {/* Chat Area - Centered and Clean */}
+        {view === 'chat' ? (
+          <div className="flex-1 overflow-y-auto p-8 space-y-10 max-w-3xl mx-auto w-full scrollbar-hide">
+            {messages.length === 0 ? (
+              <div className="h-full flex flex-col items-center justify-center text-center space-y-8">
+                <motion.div 
+                  initial={{ scale: 0.8, opacity: 0 }}
+                  animate={{ scale: 1, opacity: 1 }}
+                  className="w-24 h-24 bg-orange-50 rounded-[2.5rem] flex items-center justify-center"
                 >
-                  <X className="h-5 w-5" />
-                </button>
+                  <Sparkles className="w-10 h-10 text-orange-500" />
+                </motion.div>
+                <div className="space-y-3">
+                  <h2 className="text-4xl font-bold tracking-tight text-gray-900">{t('chat.greeting', { name: user.name })}</h2>
+                  <p className="text-gray-400 text-lg max-w-sm mx-auto">{t('chat.readyToPractice', { language: targetLang })}</p>
+                </div>
+                <div className="flex flex-wrap justify-center gap-3 max-w-lg">
+                  {[
+                    t('chat.hints.hello', { language: targetLang }),
+                    t('chat.hints.coffeeShop'),
+                    t('chat.hints.grammar'),
+                    t('chat.hints.joke')
+                  ].map(hint => (
+                    <button 
+                      key={hint}
+                      onClick={() => setInput(hint)}
+                      className="px-5 py-3 bg-white border border-gray-200 rounded-2xl text-sm font-semibold text-gray-600 hover:border-orange-200 hover:bg-orange-50 hover:text-orange-700 transition-all shadow-sm"
+                    >
+                      {hint}
+                    </button>
+                  ))}
+                </div>
               </div>
-
-              <div className="space-y-6">
-                <div>
-                  <label className="mb-2 block text-xs font-bold tracking-widest text-black/40 uppercase">
-                    Native Language
-                  </label>
-                  <select
-                    value={nativeLang}
-                    onChange={e => updateLanguages(e.target.value, targetLang)}
-                    className="w-full rounded-xl border-none bg-black/5 px-4 py-3 text-sm"
-                  >
-                    <option>Russian</option>
-                    <option>English</option>
-                    <option>Spanish</option>
-                    <option>French</option>
-                  </select>
-                </div>
-
-                <div>
-                  <label className="mb-2 block text-xs font-bold tracking-widest text-black/40 uppercase">
-                    Target Language
-                  </label>
-                  <select
-                    value={targetLang}
-                    onChange={e => updateLanguages(nativeLang, e.target.value)}
-                    className="w-full rounded-xl border-none bg-black/5 px-4 py-3 text-sm"
-                  >
-                    <option>English</option>
-                    <option>Spanish</option>
-                    <option>Chinese</option>
-                    <option>German</option>
-                    <option>French</option>
-                  </select>
-                </div>
-
-                <div className="border-t border-gray-100 pt-4">
-                  <label className="mb-2 block text-xs font-bold tracking-widest text-black/40 uppercase">
-                    AI Provider
-                  </label>
-                  <div className="mb-4 flex gap-2">
-                    <button
-                      onClick={() => updateProviderSettings('gemini', ollamaUrl, ollamaModel)}
-                      className={cn(
-                        'flex-1 rounded-xl py-2 text-xs font-bold transition-all',
-                        provider === 'gemini'
-                          ? 'bg-orange-500 text-white'
-                          : 'bg-gray-100 text-gray-500'
-                      )}
-                    >
-                      Gemini (Cloud)
-                    </button>
-                    <button
-                      onClick={() => updateProviderSettings('ollama', ollamaUrl, ollamaModel)}
-                      className={cn(
-                        'flex-1 rounded-xl py-2 text-xs font-bold transition-all',
-                        provider === 'ollama'
-                          ? 'bg-orange-500 text-white'
-                          : 'bg-gray-100 text-gray-500'
-                      )}
-                    >
-                      Ollama (Local)
-                    </button>
+            ) : (
+              messages.map((msg, idx) => (
+                <motion.div
+                  initial={{ y: 20, opacity: 0 }}
+                  animate={{ y: 0, opacity: 1 }}
+                  key={idx}
+                  className={cn(
+                    "flex flex-col",
+                    msg.role === 'user' ? "items-end" : "items-start"
+                  )}
+                >
+                  <div className={cn(
+                    "max-w-[85%] px-6 py-4 rounded-[2rem] text-base leading-relaxed shadow-sm",
+                    msg.role === 'user' 
+                      ? "bg-orange-500 text-white rounded-tr-none font-medium" 
+                      : "bg-gray-50 text-gray-800 rounded-tl-none border border-gray-100"
+                  )}>
+                    <div className="markdown-body">
+                      <Markdown>{msg.content}</Markdown>
+                    </div>
                   </div>
-
-                  {provider === 'ollama' && (
-                    <div className="animate-in fade-in slide-in-from-top-2 space-y-4">
-                      <div>
-                        <label className="mb-1 block text-[10px] font-bold text-black/40 uppercase">
-                          Ollama URL
-                        </label>
-                        <input
-                          type="text"
-                          value={ollamaUrl}
-                          onChange={e =>
-                            updateProviderSettings('ollama', e.target.value, ollamaModel)
-                          }
-                          placeholder="http://localhost:11434"
-                          className="w-full rounded-xl border-none bg-black/5 px-4 py-2 text-xs"
-                        />
-                      </div>
-                      <div>
-                        <label className="mb-1 block text-[10px] font-bold text-black/40 uppercase">
-                          Model Name
-                        </label>
-                        <input
-                          type="text"
-                          value={ollamaModel}
-                          onChange={e =>
-                            updateProviderSettings('ollama', ollamaUrl, e.target.value)
-                          }
-                          placeholder="llama3"
-                          className="w-full rounded-xl border-none bg-black/5 px-4 py-2 text-xs"
-                        />
-                      </div>
-                      <p className="text-[10px] text-gray-400 italic">
-                        Note: Start Ollama with{' '}
-                        <code className="bg-gray-100 px-1">OLLAMA_ORIGINS="*"</code> to allow
-                        connection.
-                      </p>
+                  {msg.role === 'assistant' && (
+                    <div className="flex items-center gap-3 mt-3 ml-2">
+                      <button 
+                        onClick={() => handleSpeak(msg.content)}
+                        className="p-2.5 bg-white border border-gray-100 rounded-xl hover:bg-gray-50 transition-all text-gray-400 hover:text-orange-500 shadow-sm"
+                      >
+                        <Volume2 className="w-4 h-4" />
+                      </button>
+                      {msg.type === 'theory' && (
+                        <div className="flex items-center gap-1.5 px-3 py-1 bg-blue-50 text-blue-600 rounded-full text-[10px] font-bold uppercase tracking-wider border border-blue-100">
+                          <BookOpen className="w-3.5 h-3.5" />
+                          Learning Card
+                        </div>
+                      )}
                     </div>
                   )}
+                </motion.div>
+              ))
+            )}
+            {isLoading && (
+              <div className="flex flex-col items-start">
+                <div className="flex gap-1.5 items-center px-6 py-5 bg-gray-50 rounded-[2rem] rounded-tl-none border border-gray-100">
+                  <div className="w-2 h-2 bg-gray-300 rounded-full animate-bounce" />
+                  <div className="w-2 h-2 bg-gray-300 rounded-full animate-bounce [animation-delay:0.2s]" />
+                  <div className="w-2 h-2 bg-gray-300 rounded-full animate-bounce [animation-delay:0.4s]" />
                 </div>
-
-                <button
-                  onClick={() => setIsSettingsOpen(false)}
-                  className="w-full rounded-2xl bg-black py-4 font-bold text-white transition-all hover:bg-black/90"
-                >
-                  Save Changes
-                </button>
               </div>
-            </motion.div>
-          </motion.div>
+            )}
+            <div ref={messagesEndRef} />
+          </div>
+        ) : (
+          <div className="flex-1 overflow-y-auto p-8 scrollbar-hide">
+            <div className="max-w-4xl mx-auto">
+              <div className="mb-12">
+                <h2 className="text-3xl font-bold mb-2">Learning Path</h2>
+                <p className="text-gray-400">Master {targetLang} following the CEFR curriculum.</p>
+              </div>
+
+              <div className="space-y-12">
+                {CEFR_CURRICULUM.map((level) => (
+                  <div key={level.level} className={cn(
+                    "relative p-8 rounded-[2.5rem] border-2 transition-all",
+                    user.level === level.level ? "bg-orange-50 border-orange-200" : "bg-white border-gray-100 opacity-60"
+                  )}>
+                    <div className="flex items-center justify-between mb-8">
+                      <div>
+                        <div className="flex items-center gap-3 mb-1">
+                          <span className="text-4xl font-black text-orange-500">{level.level}</span>
+                          <h3 className="text-2xl font-bold">{level.name}</h3>
+                        </div>
+                        <p className="text-sm text-gray-500 max-w-lg">{level.description}</p>
+                      </div>
+                      {user.level === level.level && (
+                        <div className="px-4 py-2 bg-orange-500 text-white rounded-full text-xs font-bold uppercase tracking-widest">Current Level</div>
+                      )}
+                    </div>
+
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                      {level.topics.map((topic) => {
+                        const isCompleted = completedTopics.includes(topic.id);
+                        return (
+                          <div 
+                            key={topic.id}
+                            onClick={() => setSelectedTopic(topic)}
+                            className={cn(
+                              "p-6 rounded-2xl border-2 transition-all flex items-center justify-between group cursor-pointer",
+                              isCompleted ? "bg-emerald-50 border-emerald-100" : "bg-white border-gray-100 hover:border-orange-200"
+                            )}
+                          >
+                            <div className="flex items-center gap-4">
+                              <div className={cn(
+                                "w-12 h-12 rounded-xl flex items-center justify-center transition-all",
+                                isCompleted ? "bg-emerald-500 text-white" : "bg-gray-100 text-gray-400 group-hover:bg-orange-100 group-hover:text-orange-500"
+                              )}>
+                                {topic.category === 'grammar' && <BookOpen className="w-6 h-6" />}
+                                {topic.category === 'vocabulary' && <Sparkles className="w-6 h-6" />}
+                                {topic.category === 'conversation' && <MessageSquare className="w-6 h-6" />}
+                              </div>
+                              <div>
+                                <h4 className="font-bold text-sm mb-0.5">{topic.title}</h4>
+                                <p className="text-xs text-gray-400">{topic.description}</p>
+                              </div>
+                            </div>
+                            <button 
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                isCompleted ? null : completeTopic(topic.id);
+                              }}
+                              className={cn(
+                                "w-10 h-10 rounded-full flex items-center justify-center transition-all",
+                                isCompleted ? "bg-emerald-100 text-emerald-600" : "bg-gray-50 text-gray-300 hover:bg-orange-500 hover:text-white"
+                              )}
+                            >
+                              {isCompleted ? <Check className="w-5 h-5" /> : <Plus className="w-5 h-5" />}
+                            </button>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          </div>
         )}
-      </AnimatePresence>
-    </div>
-  );
+
+        {/* Input Area - Speak Style */}
+        {view === 'chat' && (
+          <div className="p-8 bg-white">
+            <form 
+              onSubmit={handleSendMessage}
+              className="max-w-3xl mx-auto relative flex items-center gap-4"
+            >
+              <div className="relative flex-1">
+                <input
+                  value={input}
+                  onChange={(e) => setInput(e.target.value)}
+                  placeholder={`Message Lumie in ${targetLang}...`}
+                  className="w-full bg-gray-50 border border-gray-100 rounded-[2rem] py-5 pl-8 pr-28 text-base focus:ring-4 focus:ring-orange-500/5 focus:bg-white focus:border-orange-200 transition-all outline-none"
+                />
+                <div className="absolute right-3 top-1/2 -translate-y-1/2 flex items-center gap-1.5">
+                  <button
+                    type="button"
+                    onClick={toggleUltraFastMode}
+                    className={cn(
+                      "w-11 h-11 rounded-full flex items-center justify-center transition-all",
+                      isUltraFastMode ? "bg-indigo-500 text-white shadow-lg shadow-indigo-500/20" : "text-gray-300 hover:text-indigo-500 hover:bg-indigo-50"
+                    )}
+                    title={t('ui.ultraFastMode')}
+                  >
+                    <Sparkles className="w-5 h-5" />
+                  </button>
+                  <button
+                    type="button"
+                    onClick={toggleListening}
+                    className={cn(
+                      "w-11 h-11 rounded-full flex items-center justify-center transition-all",
+                      isListening ? "bg-red-500 text-white animate-pulse shadow-lg shadow-red-500/20" : "text-gray-300 hover:text-orange-500 hover:bg-orange-50"
+                    )}
+                  >
+                    <Mic className="w-5 h-5" />
+                  </button>
+                </div>
+              </div>
+              <button
+                type="submit"
+                disabled={!input.trim() || isLoading}
+                className="w-14 h-14 bg-orange-500 text-white rounded-[1.5rem] flex items-center justify-center hover:bg-orange-600 disabled:opacity-20 transition-all shrink-0 shadow-lg shadow-orange-500/20"
+              >
+                <Send className="w-6 h-6" />
+              </button>
+            </form>
+          </div>
+        )}
+
+        {view === 'chat' && (
+          <div className="max-w-3xl mx-auto mb-8 w-full px-8 flex items-center justify-between text-[11px] text-gray-400 font-bold uppercase tracking-widest">
+            <div className="flex gap-6">
+              <span>Shift + Enter for new line</span>
+              <span>Lumie can make mistakes</span>
+            </div>
+            <div className="flex items-center gap-1.5">
+              <div className="w-1.5 h-1.5 bg-emerald-500 rounded-full shadow-[0_0_8px_rgba(16,185,129,0.5)]" />
+              System Ready
+            </div>
+          </div>
+        )}
+      </>
+    )}
+  </main>
+
+        {/* Voice Mode Overlay */}
+        <AnimatePresence>
+          {isVoiceMode && (
+            <motion.div 
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              className={cn(
+                "fixed inset-0 z-50 flex flex-col items-center justify-center text-white transition-colors duration-500",
+                isUltraFastMode ? "bg-indigo-600" : "bg-emerald-500"
+              )}
+            >
+              <button 
+                onClick={() => {
+                  if (isUltraFastMode) {
+                    toggleUltraFastMode();
+                  } else {
+                    setIsVoiceMode(false);
+                  }
+                }}
+                className="absolute top-8 right-8 p-3 bg-white/10 hover:bg-white/20 rounded-full transition-all"
+              >
+                <X className="w-6 h-6" />
+              </button>
+
+              {isUltraFastMode && (
+                <div className="absolute top-8 left-8 flex items-center gap-2 px-3 py-1.5 bg-white/20 rounded-full">
+                  <div className="w-2 h-2 bg-red-500 rounded-full animate-pulse" />
+                  <span className="text-[10px] font-bold uppercase tracking-widest">Live Mode (Lumie AI)</span>
+                </div>
+              )}
+
+              <div className="relative mb-12">
+                <motion.div 
+                  animate={{ scale: isUltraFastMode ? [1, 1.1, 1] : [1, 1.2, 1] }}
+                  transition={{ repeat: Infinity, duration: isUltraFastMode ? 1 : 2 }}
+                  className="w-32 h-32 bg-white/20 rounded-full flex items-center justify-center"
+                >
+                  <div className="w-24 h-24 bg-white/30 rounded-full flex items-center justify-center">
+                    <div className={cn(
+                      "w-16 h-16 bg-white rounded-full flex items-center justify-center",
+                      isUltraFastMode ? "text-indigo-600" : "text-emerald-500"
+                    )}>
+                      {isUltraFastMode ? <Sparkles className="w-8 h-8" /> : (isListening ? <Mic className="w-8 h-8 animate-pulse" /> : <Volume2 className="w-8 h-8" />)}
+                    </div>
+                  </div>
+                </motion.div>
+                
+                {isListening && (
+                  <div className="absolute -inset-4 border-2 border-white/30 rounded-full animate-ping" />
+                )}
+              </div>
+
+              <div className="h-24 flex flex-col items-center justify-center text-center px-6">
+                <h2 className="text-3xl font-serif mb-2">
+                  {isUltraFastMode ? "Always Listening" : (isListening ? "I'm listening..." : isSpeaking ? "Lumie is speaking" : isLoading ? "Thinking..." : "Ready to talk")}
+                </h2>
+                <p className="text-white/60 text-sm max-w-xs">
+                  {isUltraFastMode ? "Speak naturally, Lumie will respond instantly" : (isListening ? "Speak clearly in " + (recognitionLang === 'target' ? targetLang : nativeLang) : "Wait for Lumie to respond")}
+                </p>
+              </div>
+
+              {micPermission === 'denied' && (
+                <div className="mt-4 px-6 py-3 bg-red-500/20 border border-red-500/30 rounded-2xl text-white text-xs font-medium flex items-center gap-3 max-w-xs">
+                  <Mic className="w-4 h-4 text-red-400 shrink-0" />
+                  <p className="text-left">
+                    Microphone access is blocked. Please allow access in your browser settings.
+                  </p>
+                </div>
+              )}
+
+              {!isUltraFastMode && (
+                <div className="mt-8 flex bg-white/10 p-1 rounded-xl">
+                  <button 
+                    onClick={() => setRecognitionLang('target')}
+                    className={cn(
+                      "px-4 py-2 rounded-lg text-xs font-bold transition-all",
+                      recognitionLang === 'target' ? "bg-white text-emerald-500" : "text-white hover:bg-white/10"
+                    )}
+                  >
+                    {targetLang}
+                  </button>
+                  <button 
+                    onClick={() => setRecognitionLang('native')}
+                    className={cn(
+                      "px-4 py-2 rounded-lg text-xs font-bold transition-all",
+                      recognitionLang === 'native' ? "bg-white text-emerald-500" : "text-white hover:bg-white/10"
+                    )}
+                  >
+                    {nativeLang}
+                  </button>
+                </div>
+              )}
+
+              <div className="mt-12 h-10 flex items-center justify-center gap-2">
+                {[1, 2, 3, 4, 5].map(i => (
+                  <motion.div
+                    key={i}
+                    animate={{ height: isListening || isSpeaking ? [10, 32, 10] : 10 }}
+                    transition={{ repeat: Infinity, duration: 0.5, delay: i * 0.1 }}
+                    className="w-1.5 bg-white rounded-full"
+                  />
+                ))}
+              </div>
+              
+              {isSpeaking && (
+                <button 
+                  onClick={() => {
+                    if (audioRef.current) {
+                      audioRef.current.pause();
+                      setIsSpeaking(false);
+                    }
+                  }}
+                  className="mt-12 px-6 py-2 border border-white/20 rounded-full text-sm font-medium hover:bg-white/10 transition-all"
+                >
+                  Stop Listening
+                </button>
+              )}
+            </motion.div>
+          )}
+        </AnimatePresence>
+        {/* Settings Modal */}
+        <AnimatePresence>
+          {isSettingsOpen && (
+            <motion.div 
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              className="fixed inset-0 bg-black/40 backdrop-blur-sm z-50 flex items-center justify-center p-4"
+            >
+              <motion.div 
+                initial={{ scale: 0.95, y: 20 }}
+                animate={{ scale: 1, y: 0 }}
+                className="bg-white rounded-3xl p-8 max-w-md w-full shadow-2xl"
+              >
+                <div className="flex justify-between items-center mb-6">
+                  <h2 className="font-serif text-2xl font-bold">Learning Settings</h2>
+                  <button onClick={() => setIsSettingsOpen(false)} className="p-2 hover:bg-black/5 rounded-full">
+                    <X className="w-5 h-5" />
+                  </button>
+                </div>
+                
+                <div className="space-y-6">
+                  <div>
+                    <label className="block text-xs font-bold text-black/40 uppercase tracking-widest mb-2">Native Language</label>
+                    <select 
+                      value={nativeLang}
+                      onChange={(e) => updateLanguages(e.target.value, targetLang)}
+                      className="w-full bg-black/5 border-none rounded-xl py-3 px-4 text-sm"
+                    >
+                      <option>Russian</option>
+                      <option>English</option>
+                      <option>Spanish</option>
+                      <option>French</option>
+                    </select>
+                  </div>
+                  
+                  <div>
+                    <label className="block text-xs font-bold text-black/40 uppercase tracking-widest mb-2">Target Language</label>
+                    <select 
+                      value={targetLang}
+                      onChange={(e) => updateLanguages(nativeLang, e.target.value)}
+                      className="w-full bg-black/5 border-none rounded-xl py-3 px-4 text-sm"
+                    >
+                      <option>English</option>
+                      <option>Spanish</option>
+                      <option>Chinese</option>
+                      <option>German</option>
+                      <option>French</option>
+                    </select>
+                  </div>
+
+                  <div>
+                    <label className="block text-xs font-bold text-black/40 uppercase tracking-widest mb-2">Tutor Voice & Persona</label>
+                    <div className="flex flex-col gap-3">
+                      <button 
+                        onClick={() => updateVoice('lumie')}
+                        className={cn(
+                          "w-full py-4 px-6 rounded-2xl text-left transition-all flex items-center gap-4 border-2",
+                          voice === 'lumie' ? "bg-orange-50 border-orange-500 shadow-lg shadow-orange-500/10" : "bg-white border-gray-100 hover:border-gray-200"
+                        )}
+                      >
+                        <div className={cn("w-12 h-12 rounded-full flex items-center justify-center shrink-0", voice === 'lumie' ? "bg-orange-500 text-white" : "bg-gray-100 text-gray-400")}>
+                          <span className="text-xl">👩</span>
+                        </div>
+                        <div className="flex-1">
+                          <div className={cn("font-bold text-sm mb-0.5", voice === 'lumie' ? "text-orange-900" : "text-gray-900")}>Lumie (Female)</div>
+                          <div className={cn("text-[11px]", voice === 'lumie' ? "text-orange-600/70" : "text-gray-400")}>Warm, empathetic, and cheerful voice</div>
+                        </div>
+                        {voice === 'lumie' && <Check className="w-5 h-5 text-orange-500" />}
+                      </button>
+                      <button 
+                        onClick={() => updateVoice('leo')}
+                        className={cn(
+                          "w-full py-4 px-6 rounded-2xl text-left transition-all flex items-center gap-4 border-2",
+                          voice === 'leo' ? "bg-orange-50 border-orange-500 shadow-lg shadow-orange-500/10" : "bg-white border-gray-100 hover:border-gray-200"
+                        )}
+                      >
+                        <div className={cn("w-12 h-12 rounded-full flex items-center justify-center shrink-0", voice === 'leo' ? "bg-orange-500 text-white" : "bg-gray-100 text-gray-400")}>
+                          <span className="text-xl">👨</span>
+                        </div>
+                        <div className="flex-1">
+                          <div className={cn("font-bold text-sm mb-0.5", voice === 'leo' ? "text-orange-900" : "text-gray-900")}>Leo (Male)</div>
+                          <div className={cn("text-[11px]", voice === 'leo' ? "text-orange-600/70" : "text-gray-400")}>Warm, empathetic, and supportive voice</div>
+                        </div>
+                        {voice === 'leo' && <Check className="w-5 h-5 text-orange-500" />}
+                      </button>
+                    </div>
+                  </div>
+
+                  <div className="pt-4 border-t border-gray-100">
+                    <label className="block text-xs font-bold text-black/40 uppercase tracking-widest mb-2">AI Provider</label>
+                    <div className="flex gap-2 mb-4">
+                      <button 
+                        onClick={() => updateProviderSettings('gemini', ollamaUrl, ollamaModel)}
+                        className={cn(
+                          "flex-1 py-2 rounded-xl text-xs font-bold transition-all",
+                          provider === 'gemini' ? "bg-orange-500 text-white" : "bg-gray-100 text-gray-500"
+                        )}
+                      >
+                        Gemini (Cloud)
+                      </button>
+                      <button 
+                        onClick={() => updateProviderSettings('ollama', ollamaUrl, ollamaModel)}
+                        className={cn(
+                          "flex-1 py-2 rounded-xl text-xs font-bold transition-all",
+                          provider === 'ollama' ? "bg-orange-500 text-white" : "bg-gray-100 text-gray-500"
+                        )}
+                      >
+                        Ollama (Local)
+                      </button>
+                    </div>
+
+                    {provider === 'ollama' && (
+                      <div className="space-y-4 animate-in fade-in slide-in-from-top-2">
+                        <div>
+                          <label className="block text-[10px] font-bold text-black/40 uppercase mb-1">Ollama URL</label>
+                          <input 
+                            type="text"
+                            value={ollamaUrl}
+                            onChange={(e) => updateProviderSettings('ollama', e.target.value, ollamaModel)}
+                            placeholder="http://localhost:11434"
+                            className="w-full bg-black/5 border-none rounded-xl py-2 px-4 text-xs"
+                          />
+                        </div>
+                        <div>
+                          <label className="block text-[10px] font-bold text-black/40 uppercase mb-1">Model Name</label>
+                          <input 
+                            type="text"
+                            value={ollamaModel}
+                            onChange={(e) => updateProviderSettings('ollama', ollamaUrl, e.target.value)}
+                            placeholder="llama3"
+                            className="w-full bg-black/5 border-none rounded-xl py-2 px-4 text-xs"
+                          />
+                        </div>
+                        <p className="text-[10px] text-gray-400 italic">
+                          Note: Start Ollama with <code className="bg-gray-100 px-1">OLLAMA_ORIGINS="*"</code> to allow connection.
+                        </p>
+                      </div>
+                    )}
+                  </div>
+                  
+                  <button 
+                    onClick={() => setIsSettingsOpen(false)}
+                    className="w-full py-4 bg-black text-white rounded-2xl font-bold hover:bg-black/90 transition-all"
+                  >
+                    Save Changes
+                  </button>
+                </div>
+              </motion.div>
+            </motion.div>
+          )}
+        </AnimatePresence>
+      </div>
+    );
 }
 
-function LessonView({
-  topic,
-  user,
-  onClose,
-  onComplete,
-  nativeLang,
-  targetLang,
-  onSpeak,
-}: {
-  topic: Topic;
-  user: any;
-  onClose: () => void;
-  onComplete: () => void;
-  nativeLang: string;
-  targetLang: string;
-  onSpeak: (text: string) => void;
+function LessonView({ topic, user, onClose, onComplete, nativeLang, targetLang, onSpeak, onFactExtracted }: { 
+  topic: Topic, 
+  user: any, 
+  onClose: () => void, 
+  onComplete: () => void,
+  nativeLang: string,
+  targetLang: string,
+  onSpeak: (text: string) => void,
+  onFactExtracted: (text: string) => void
 }) {
   const [lessonData, setLessonData] = useState<any>(null);
   const [isLoading, setIsLoading] = useState(true);
@@ -2138,11 +2119,7 @@ function LessonView({
   useEffect(() => {
     const fetchLesson = async () => {
       setIsLoading(true);
-      const data = await generateLessonContent(topic, {
-        ...user,
-        native_lang: nativeLang,
-        target_lang: targetLang,
-      });
+      const data = await generateLessonContent(topic, { ...user, native_lang: nativeLang, target_lang: targetLang });
       setLessonData(data);
       setIsLoading(false);
     };
@@ -2164,18 +2141,23 @@ function LessonView({
       setShowExplanation(false);
     } else {
       setIsFinished(true);
+      // Save lesson performance to memory
+      const performanceSummary = `User completed a lesson on "${topic.title}". 
+      Score: ${score + (selectedOption === lessonData.exercises[currentExercise].answer ? 1 : 0)}/${lessonData.exercises.length}. 
+      Topic Category: ${topic.category}.`;
+      onFactExtracted(performanceSummary);
     }
   };
 
   if (isLoading) {
     return (
-      <div className="flex flex-1 flex-col items-center justify-center bg-white p-8">
-        <motion.div
+      <div className="flex-1 flex flex-col items-center justify-center p-8 bg-white">
+        <motion.div 
           animate={{ rotate: 360 }}
-          transition={{ repeat: Infinity, duration: 2, ease: 'linear' }}
-          className="mb-6 h-16 w-16 rounded-full border-4 border-orange-100 border-t-orange-500"
+          transition={{ repeat: Infinity, duration: 2, ease: "linear" }}
+          className="w-16 h-16 border-4 border-orange-100 border-t-orange-500 rounded-full mb-6"
         />
-        <h2 className="mb-2 text-2xl font-bold text-gray-900">Preparing your lesson...</h2>
+        <h2 className="text-2xl font-bold text-gray-900 mb-2">Preparing your lesson...</h2>
         <p className="text-gray-400">Lumie is crafting the perfect explanation for you.</p>
       </div>
     );
@@ -2183,29 +2165,28 @@ function LessonView({
 
   if (isFinished) {
     return (
-      <div className="flex flex-1 flex-col items-center justify-center bg-white p-8 text-center">
-        <motion.div
+      <div className="flex-1 flex flex-col items-center justify-center p-8 bg-white text-center">
+        <motion.div 
           initial={{ scale: 0.8, opacity: 0 }}
           animate={{ scale: 1, opacity: 1 }}
-          className="mb-8 flex h-24 w-24 items-center justify-center rounded-[2.5rem] bg-emerald-50"
+          className="w-24 h-24 bg-emerald-50 rounded-[2.5rem] flex items-center justify-center mb-8"
         >
-          <Check className="h-12 w-12 text-emerald-500" />
+          <Check className="w-12 h-12 text-emerald-500" />
         </motion.div>
-        <h2 className="mb-4 text-4xl font-bold text-gray-900">Lesson Complete!</h2>
-        <p className="mb-12 max-w-md text-lg text-gray-500">
-          Great job! You've mastered <b>{topic.title}</b>. Your score: {score}/
-          {lessonData.exercises.length}
+        <h2 className="text-4xl font-bold text-gray-900 mb-4">Lesson Complete!</h2>
+        <p className="text-gray-500 text-lg mb-12 max-w-md">
+          Great job! You've mastered <b>{topic.title}</b>. Your score: {score}/{lessonData.exercises.length}
         </p>
         <div className="flex gap-4">
-          <button
+          <button 
             onClick={onClose}
-            className="rounded-2xl bg-gray-100 px-8 py-4 font-bold text-gray-600 transition-all hover:bg-gray-200"
+            className="px-8 py-4 bg-gray-100 text-gray-600 rounded-2xl font-bold hover:bg-gray-200 transition-all"
           >
             Back to Path
           </button>
-          <button
+          <button 
             onClick={onComplete}
-            className="rounded-2xl bg-orange-500 px-8 py-4 font-bold text-white shadow-lg shadow-orange-500/20 transition-all hover:bg-orange-600"
+            className="px-8 py-4 bg-orange-500 text-white rounded-2xl font-bold shadow-lg shadow-orange-500/20 hover:bg-orange-600 transition-all"
           >
             Finish & Continue
           </button>
@@ -2215,42 +2196,38 @@ function LessonView({
   }
 
   return (
-    <div className="flex flex-1 flex-col overflow-hidden bg-white">
+    <div className="flex-1 flex flex-col bg-white overflow-hidden">
       {/* Lesson Header */}
-      <header className="flex h-20 shrink-0 items-center justify-between border-b border-gray-100 px-8">
+      <header className="h-20 flex items-center justify-between px-8 border-b border-gray-100 shrink-0">
         <div className="flex items-center gap-4">
-          <button
+          <button 
             onClick={onClose}
-            className="rounded-xl p-2.5 text-gray-400 transition-all hover:bg-gray-100"
+            className="p-2.5 hover:bg-gray-100 rounded-xl transition-all text-gray-400"
           >
-            <ArrowLeft className="h-6 w-6" />
+            <ArrowLeft className="w-6 h-6" />
           </button>
           <div>
-            <div className="mb-0.5 text-[10px] font-bold tracking-widest text-orange-500 uppercase">
-              {topic.category}
-            </div>
+            <div className="text-[10px] font-bold text-orange-500 uppercase tracking-widest mb-0.5">{topic.category}</div>
             <h2 className="text-xl font-bold text-gray-900">{topic.title}</h2>
           </div>
         </div>
-        <div className="flex items-center gap-2 rounded-full border border-gray-100 bg-gray-50 px-4 py-2">
-          <div className="h-2 w-2 rounded-full bg-orange-500" />
-          <span className="text-xs font-bold tracking-wider text-gray-500 uppercase">
-            Live Lesson
-          </span>
+        <div className="flex items-center gap-2 px-4 py-2 bg-gray-50 rounded-full border border-gray-100">
+          <div className="w-2 h-2 bg-orange-500 rounded-full" />
+          <span className="text-xs font-bold text-gray-500 uppercase tracking-wider">Live Lesson</span>
         </div>
       </header>
 
-      <div className="scrollbar-hide flex-1 overflow-y-auto p-8">
-        <div className="mx-auto max-w-3xl space-y-12 pb-20">
+      <div className="flex-1 overflow-y-auto p-8 scrollbar-hide">
+        <div className="max-w-3xl mx-auto space-y-12 pb-20">
           {/* Theory Section */}
           <section className="space-y-6">
             <div className="flex items-center gap-3">
-              <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-blue-50 text-blue-500">
-                <BookOpen className="h-5 w-5" />
+              <div className="w-10 h-10 bg-blue-50 rounded-xl flex items-center justify-center text-blue-500">
+                <BookOpen className="w-5 h-5" />
               </div>
               <h3 className="text-2xl font-bold text-gray-900">Theory</h3>
             </div>
-            <div className="rounded-[2.5rem] border border-gray-100 bg-gray-50 p-8">
+            <div className="bg-gray-50 rounded-[2.5rem] p-8 border border-gray-100">
               <div className="markdown-body prose prose-orange max-w-none">
                 <Markdown>{lessonData.theory}</Markdown>
               </div>
@@ -2260,26 +2237,23 @@ function LessonView({
           {/* Vocabulary Section */}
           <section className="space-y-6">
             <div className="flex items-center gap-3">
-              <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-orange-50 text-orange-500">
-                <Sparkles className="h-5 w-5" />
+              <div className="w-10 h-10 bg-orange-50 rounded-xl flex items-center justify-center text-orange-500">
+                <Sparkles className="w-5 h-5" />
               </div>
               <h3 className="text-2xl font-bold text-gray-900">Key Vocabulary</h3>
             </div>
-            <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               {lessonData.vocabulary.map((item: any, idx: number) => (
-                <div
-                  key={idx}
-                  className="group flex items-center justify-between rounded-2xl border border-gray-100 bg-white p-6 shadow-sm transition-all hover:border-orange-200"
-                >
+                <div key={idx} className="p-6 bg-white border border-gray-100 rounded-2xl flex items-center justify-between group hover:border-orange-200 transition-all shadow-sm">
                   <div>
-                    <div className="mb-1 text-lg font-bold text-gray-900">{item.word}</div>
+                    <div className="text-lg font-bold text-gray-900 mb-1">{item.word}</div>
                     <div className="text-sm text-gray-400">{item.translation}</div>
                   </div>
-                  <button
+                  <button 
                     onClick={() => onSpeak(item.word)}
-                    className="flex h-10 w-10 items-center justify-center rounded-full bg-gray-50 text-gray-300 transition-all group-hover:bg-orange-50 group-hover:text-orange-500 active:scale-95"
+                    className="w-10 h-10 bg-gray-50 text-gray-300 rounded-full flex items-center justify-center group-hover:bg-orange-50 group-hover:text-orange-500 transition-all active:scale-95"
                   >
-                    <Volume2 className="h-5 w-5" />
+                    <Volume2 className="w-5 h-5" />
                   </button>
                 </div>
               ))}
@@ -2289,30 +2263,23 @@ function LessonView({
           {/* Examples Section */}
           <section className="space-y-6">
             <div className="flex items-center gap-3">
-              <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-indigo-50 text-indigo-500">
-                <Lightbulb className="h-5 w-5" />
+              <div className="w-10 h-10 bg-indigo-50 rounded-xl flex items-center justify-center text-indigo-500">
+                <Lightbulb className="w-5 h-5" />
               </div>
               <h3 className="text-2xl font-bold text-gray-900">Examples</h3>
             </div>
             <div className="space-y-4">
               {lessonData.examples.map((item: any, idx: number) => (
-                <div
-                  key={idx}
-                  className="group flex items-center justify-between rounded-2xl border border-indigo-100 bg-indigo-50/30 p-6 transition-all hover:border-indigo-200"
-                >
+                <div key={idx} className="p-6 bg-indigo-50/30 border border-indigo-100 rounded-2xl flex items-center justify-between group hover:border-indigo-200 transition-all">
                   <div>
-                    <div className="mb-2 text-lg font-medium text-indigo-900 italic">
-                      "{item.text}"
-                    </div>
-                    <div className="text-sm font-medium text-indigo-600/70">
-                      — {item.translation}
-                    </div>
+                    <div className="text-lg font-medium text-indigo-900 mb-2 italic">"{item.text}"</div>
+                    <div className="text-sm text-indigo-600/70 font-medium">— {item.translation}</div>
                   </div>
-                  <button
+                  <button 
                     onClick={() => onSpeak(item.text)}
-                    className="flex h-10 w-10 items-center justify-center rounded-full bg-white/50 text-indigo-300 shadow-sm transition-all group-hover:bg-white group-hover:text-indigo-500 active:scale-95"
+                    className="w-10 h-10 bg-white/50 text-indigo-300 rounded-full flex items-center justify-center group-hover:bg-white group-hover:text-indigo-500 transition-all active:scale-95 shadow-sm"
                   >
-                    <Volume2 className="h-5 w-5" />
+                    <Volume2 className="w-5 h-5" />
                   </button>
                 </div>
               ))}
@@ -2320,76 +2287,58 @@ function LessonView({
           </section>
 
           {/* Exercises Section */}
-          <section className="space-y-8 border-t border-gray-100 pt-12">
+          <section className="space-y-8 pt-12 border-t border-gray-100">
             <div className="flex items-center justify-between">
               <div className="flex items-center gap-3">
-                <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-emerald-50 text-emerald-500">
-                  <BrainCircuit className="h-5 w-5" />
+                <div className="w-10 h-10 bg-emerald-50 rounded-xl flex items-center justify-center text-emerald-500">
+                  <BrainCircuit className="w-5 h-5" />
                 </div>
                 <h3 className="text-2xl font-bold text-gray-900">Practice</h3>
               </div>
-              <div className="text-sm font-bold tracking-widest text-gray-400 uppercase">
+              <div className="text-sm font-bold text-gray-400 uppercase tracking-widest">
                 Exercise {currentExercise + 1} of {lessonData.exercises.length}
               </div>
             </div>
 
-            <div className="rounded-[2.5rem] border-2 border-gray-100 bg-white p-10 shadow-xl shadow-gray-200/20">
-              <h4 className="mb-8 text-xl font-bold text-gray-800">
-                {lessonData.exercises[currentExercise].question}
-              </h4>
+            <div className="bg-white border-2 border-gray-100 rounded-[2.5rem] p-10 shadow-xl shadow-gray-200/20">
+              <h4 className="text-xl font-bold text-gray-800 mb-8">{lessonData.exercises[currentExercise].question}</h4>
               <div className="space-y-3">
-                {lessonData.exercises[currentExercise].options.map(
-                  (option: string, idx: number) => (
-                    <button
-                      key={idx}
-                      disabled={showExplanation}
-                      onClick={() => handleAnswer(option)}
-                      className={cn(
-                        'w-full rounded-2xl border-2 p-5 text-left font-semibold transition-all',
-                        selectedOption === option
-                          ? option === lessonData.exercises[currentExercise].answer
-                            ? 'border-emerald-500 bg-emerald-50 text-emerald-700'
-                            : 'border-red-500 bg-red-50 text-red-700'
-                          : showExplanation &&
-                              option === lessonData.exercises[currentExercise].answer
-                            ? 'border-emerald-500 bg-emerald-50 text-emerald-700'
-                            : 'border-gray-100 bg-white text-gray-600 hover:border-orange-200'
+                {lessonData.exercises[currentExercise].options.map((option: string, idx: number) => (
+                  <button
+                    key={idx}
+                    disabled={showExplanation}
+                    onClick={() => handleAnswer(option)}
+                    className={cn(
+                      "w-full p-5 rounded-2xl text-left font-semibold transition-all border-2",
+                      selectedOption === option 
+                        ? (option === lessonData.exercises[currentExercise].answer ? "bg-emerald-50 border-emerald-500 text-emerald-700" : "bg-red-50 border-red-500 text-red-700")
+                        : (showExplanation && option === lessonData.exercises[currentExercise].answer ? "bg-emerald-50 border-emerald-500 text-emerald-700" : "bg-white border-gray-100 hover:border-orange-200 text-gray-600")
+                    )}
+                  >
+                    <div className="flex items-center justify-between">
+                      <span>{option}</span>
+                      {selectedOption === option && (
+                        option === lessonData.exercises[currentExercise].answer ? <Check className="w-5 h-5" /> : <X className="w-5 h-5" />
                       )}
-                    >
-                      <div className="flex items-center justify-between">
-                        <span>{option}</span>
-                        {selectedOption === option &&
-                          (option === lessonData.exercises[currentExercise].answer ? (
-                            <Check className="h-5 w-5" />
-                          ) : (
-                            <X className="h-5 w-5" />
-                          ))}
-                      </div>
-                    </button>
-                  )
-                )}
+                    </div>
+                  </button>
+                ))}
               </div>
 
               <AnimatePresence>
                 {showExplanation && (
-                  <motion.div
+                  <motion.div 
                     initial={{ height: 0, opacity: 0 }}
                     animate={{ height: 'auto', opacity: 1 }}
-                    className="mt-8 rounded-2xl border border-gray-100 bg-gray-50 p-6"
+                    className="mt-8 p-6 bg-gray-50 rounded-2xl border border-gray-100"
                   >
-                    <div className="mb-2 text-xs font-bold tracking-widest text-gray-400 uppercase">
-                      Explanation
-                    </div>
-                    <p className="text-sm leading-relaxed text-gray-600">
-                      {lessonData.exercises[currentExercise].explanation}
-                    </p>
-                    <button
+                    <div className="text-xs font-bold text-gray-400 uppercase tracking-widest mb-2">Explanation</div>
+                    <p className="text-gray-600 text-sm leading-relaxed">{lessonData.exercises[currentExercise].explanation}</p>
+                    <button 
                       onClick={nextExercise}
-                      className="mt-6 w-full rounded-xl bg-gray-900 py-4 font-bold text-white transition-all hover:bg-black"
+                      className="mt-6 w-full py-4 bg-gray-900 text-white rounded-xl font-bold hover:bg-black transition-all"
                     >
-                      {currentExercise < lessonData.exercises.length - 1
-                        ? 'Next Exercise'
-                        : 'Finish Lesson'}
+                      {currentExercise < lessonData.exercises.length - 1 ? "Next Exercise" : "Finish Lesson"}
                     </button>
                   </motion.div>
                 )}
@@ -2402,15 +2351,7 @@ function LessonView({
   );
 }
 
-function Onboarding({
-  user,
-  onComplete,
-  onLogout,
-}: {
-  user: any;
-  onComplete: (data: any) => void;
-  onLogout: () => void;
-}) {
+function Onboarding({ user, onComplete, onLogout }: { user: any, onComplete: (data: any) => void, onLogout: () => void }) {
   const [step, setStep] = useState(1);
   const [formData, setFormData] = useState({
     name: user?.name || '',
@@ -2419,20 +2360,10 @@ function Onboarding({
     nativeLang: 'Russian',
     targetLang: 'English',
     level: user?.level || 'A1',
-    avatar: '',
+    avatar: ''
   });
 
-  const languages = [
-    'Russian',
-    'English',
-    'Chinese',
-    'Japanese',
-    'Spanish',
-    'French',
-    'Portuguese',
-    'German',
-    'Italian',
-  ];
+  const languages = ['Russian', 'English', 'Chinese', 'Japanese', 'Spanish', 'French', 'Portuguese', 'German', 'Italian'];
   const cefrLevels = ['A1', 'A2', 'B1', 'B2', 'C1', 'C2'];
   const avatars = [
     'https://api.dicebear.com/7.x/big-smile/svg?seed=Felix',
@@ -2440,59 +2371,54 @@ function Onboarding({
     'https://api.dicebear.com/7.x/big-smile/svg?seed=Max',
     'https://api.dicebear.com/7.x/big-smile/svg?seed=Luna',
     'https://api.dicebear.com/7.x/big-smile/svg?seed=Leo',
-    'https://api.dicebear.com/7.x/big-smile/svg?seed=Zoe',
+    'https://api.dicebear.com/7.x/big-smile/svg?seed=Zoe'
   ];
 
   const nextStep = () => setStep(s => s + 1);
   const prevStep = () => setStep(s => s - 1);
 
   return (
-    <div className="flex h-screen items-center justify-center bg-white p-6 font-sans">
-      <motion.div
+    <div className="h-screen flex items-center justify-center bg-white p-6 font-sans">
+      <motion.div 
         initial={{ y: 20, opacity: 0 }}
         animate={{ y: 0, opacity: 1 }}
-        className="w-full max-w-xl rounded-[3rem] border-4 border-gray-100 bg-white p-12"
+        className="bg-white p-12 rounded-[3rem] border-4 border-gray-100 max-w-xl w-full"
       >
-        <div className="mb-12 flex items-center justify-between">
-          <div className="mr-6 h-4 flex-1 overflow-hidden rounded-full bg-gray-100">
-            <motion.div
+        <div className="flex justify-between items-center mb-12">
+          <div className="flex-1 h-4 bg-gray-100 rounded-full overflow-hidden mr-6">
+            <motion.div 
               initial={{ width: 0 }}
               animate={{ width: `${(step / 5) * 100}%` }}
-              className="h-full rounded-full bg-[#58CC02]"
+              className="h-full bg-[#58CC02] rounded-full"
             />
           </div>
-          <button
-            onClick={onLogout}
-            className="text-sm font-bold tracking-widest text-gray-400 uppercase hover:text-gray-600"
-          >
-            Exit
-          </button>
+          <button onClick={onLogout} className="text-gray-400 hover:text-gray-600 text-sm font-bold uppercase tracking-widest">Exit</button>
         </div>
 
         {step === 1 && (
           <motion.div initial={{ x: 20, opacity: 0 }} animate={{ x: 0, opacity: 1 }}>
-            <h2 className="mb-4 text-3xl font-bold text-[#3C3C3C]">Hi there! I'm Lumie.</h2>
-            <p className="mb-10 text-lg font-medium text-gray-500">What's your name?</p>
+            <h2 className="text-3xl font-bold mb-4 text-[#3C3C3C]">Hi there! I'm Lumie.</h2>
+            <p className="text-gray-500 mb-10 text-lg font-medium">What's your name?</p>
             <div className="space-y-8">
-              <input
-                type="text"
+              <input 
+                type="text" 
                 value={formData.name}
-                onChange={e => setFormData({ ...formData, name: e.target.value })}
-                className="w-full rounded-2xl border-2 border-gray-200 bg-gray-100 px-8 py-5 text-xl font-bold transition-all outline-none focus:border-[#1CB0F6]"
+                onChange={e => setFormData({...formData, name: e.target.value})}
+                className="w-full bg-gray-100 border-2 border-gray-200 rounded-2xl py-5 px-8 text-xl font-bold focus:border-[#1CB0F6] outline-none transition-all"
                 placeholder="Your name"
               />
               <div className="grid grid-cols-2 gap-6">
-                <input
-                  type="number"
+                <input 
+                  type="number" 
                   value={formData.age}
-                  onChange={e => setFormData({ ...formData, age: e.target.value })}
-                  className="w-full rounded-2xl border-2 border-gray-200 bg-gray-100 px-8 py-5 text-xl font-bold transition-all outline-none focus:border-[#1CB0F6]"
+                  onChange={e => setFormData({...formData, age: e.target.value})}
+                  className="w-full bg-gray-100 border-2 border-gray-200 rounded-2xl py-5 px-8 text-xl font-bold focus:border-[#1CB0F6] outline-none transition-all"
                   placeholder="Age"
                 />
-                <select
+                <select 
                   value={formData.gender}
-                  onChange={e => setFormData({ ...formData, gender: e.target.value })}
-                  className="w-full appearance-none rounded-2xl border-2 border-gray-200 bg-gray-100 px-8 py-5 text-xl font-bold transition-all outline-none focus:border-[#1CB0F6]"
+                  onChange={e => setFormData({...formData, gender: e.target.value})}
+                  className="w-full bg-gray-100 border-2 border-gray-200 rounded-2xl py-5 px-8 text-xl font-bold focus:border-[#1CB0F6] outline-none transition-all appearance-none"
                 >
                   <option value="">Gender</option>
                   <option value="male">Male</option>
@@ -2500,10 +2426,10 @@ function Onboarding({
                   <option value="other">Other</option>
                 </select>
               </div>
-              <button
+              <button 
                 disabled={!formData.name || !formData.age || !formData.gender}
                 onClick={nextStep}
-                className="w-full rounded-2xl bg-[#58CC02] py-5 text-xl font-bold text-white shadow-[0_5px_0_#46A302] transition-all hover:translate-y-[-2px] hover:shadow-[0_7px_0_#46A302] active:translate-y-[2px] active:shadow-none disabled:cursor-not-allowed disabled:opacity-50"
+                className="w-full py-5 bg-[#58CC02] text-white rounded-2xl font-bold text-xl shadow-[0_5px_0_#46A302] hover:translate-y-[-2px] hover:shadow-[0_7px_0_#46A302] active:translate-y-[2px] active:shadow-none transition-all disabled:opacity-50 disabled:cursor-not-allowed"
               >
                 CONTINUE
               </button>
@@ -2513,23 +2439,19 @@ function Onboarding({
 
         {step === 2 && (
           <motion.div initial={{ x: 20, opacity: 0 }} animate={{ x: 0, opacity: 1 }}>
-            <h2 className="mb-4 text-3xl font-bold text-[#3C3C3C]">Language Settings</h2>
-            <p className="mb-10 text-lg font-medium text-gray-500">What languages should we use?</p>
+            <h2 className="text-3xl font-bold mb-4 text-[#3C3C3C]">Language Settings</h2>
+            <p className="text-gray-500 mb-10 text-lg font-medium">What languages should we use?</p>
             <div className="space-y-10">
               <div>
-                <label className="mb-4 block text-xs font-bold tracking-widest text-gray-400 uppercase">
-                  Native Language
-                </label>
+                <label className="block text-xs font-bold text-gray-400 uppercase tracking-widest mb-4">Native Language</label>
                 <div className="grid grid-cols-3 gap-3">
                   {languages.map(lang => (
                     <button
                       key={lang}
-                      onClick={() => setFormData({ ...formData, nativeLang: lang })}
+                      onClick={() => setFormData({...formData, nativeLang: lang})}
                       className={cn(
-                        'rounded-2xl border-2 px-2 py-4 text-sm font-bold transition-all',
-                        formData.nativeLang === lang
-                          ? 'border-[#1CB0F6] bg-[#DDF4FF] text-[#1CB0F6]'
-                          : 'border-gray-200 bg-white hover:bg-gray-50'
+                        "py-4 px-2 rounded-2xl text-sm font-bold transition-all border-2",
+                        formData.nativeLang === lang ? "bg-[#DDF4FF] border-[#1CB0F6] text-[#1CB0F6]" : "bg-white border-gray-200 hover:bg-gray-50"
                       )}
                     >
                       {lang}
@@ -2538,19 +2460,15 @@ function Onboarding({
                 </div>
               </div>
               <div>
-                <label className="mb-4 block text-xs font-bold tracking-widest text-gray-400 uppercase">
-                  Language to Practice
-                </label>
+                <label className="block text-xs font-bold text-gray-400 uppercase tracking-widest mb-4">Language to Practice</label>
                 <div className="grid grid-cols-3 gap-3">
                   {languages.map(lang => (
                     <button
                       key={lang}
-                      onClick={() => setFormData({ ...formData, targetLang: lang })}
+                      onClick={() => setFormData({...formData, targetLang: lang})}
                       className={cn(
-                        'rounded-2xl border-2 px-2 py-4 text-sm font-bold transition-all',
-                        formData.targetLang === lang
-                          ? 'border-[#1CB0F6] bg-[#DDF4FF] text-[#1CB0F6]'
-                          : 'border-gray-200 bg-white hover:bg-gray-50'
+                        "py-4 px-2 rounded-2xl text-sm font-bold transition-all border-2",
+                        formData.targetLang === lang ? "bg-[#DDF4FF] border-[#1CB0F6] text-[#1CB0F6]" : "bg-white border-gray-200 hover:bg-gray-50"
                       )}
                     >
                       {lang}
@@ -2559,18 +2477,8 @@ function Onboarding({
                 </div>
               </div>
               <div className="flex gap-4">
-                <button
-                  onClick={prevStep}
-                  className="flex-1 rounded-2xl border-2 border-gray-200 bg-white py-5 text-lg font-bold text-gray-400 transition-all hover:bg-gray-50"
-                >
-                  BACK
-                </button>
-                <button
-                  onClick={nextStep}
-                  className="flex-[2] rounded-2xl bg-[#58CC02] py-5 text-xl font-bold text-white shadow-[0_5px_0_#46A302] transition-all hover:translate-y-[-2px] hover:shadow-[0_7px_0_#46A302] active:translate-y-[2px] active:shadow-none"
-                >
-                  CONTINUE
-                </button>
+                <button onClick={prevStep} className="flex-1 py-5 bg-white border-2 border-gray-200 text-gray-400 rounded-2xl font-bold text-lg hover:bg-gray-50 transition-all">BACK</button>
+                <button onClick={nextStep} className="flex-[2] py-5 bg-[#58CC02] text-white rounded-2xl font-bold text-xl shadow-[0_5px_0_#46A302] hover:translate-y-[-2px] hover:shadow-[0_7px_0_#46A302] active:translate-y-[2px] active:shadow-none transition-all">CONTINUE</button>
               </div>
             </div>
           </motion.div>
@@ -2578,20 +2486,16 @@ function Onboarding({
 
         {step === 3 && (
           <motion.div initial={{ x: 20, opacity: 0 }} animate={{ x: 0, opacity: 1 }}>
-            <h2 className="mb-4 text-3xl font-bold text-[#3C3C3C]">What's your level?</h2>
-            <p className="mb-10 text-lg font-medium text-gray-500">
-              Select your current proficiency in {formData.targetLang}.
-            </p>
-            <div className="mb-10 grid grid-cols-2 gap-4">
+            <h2 className="text-3xl font-bold mb-4 text-[#3C3C3C]">What's your level?</h2>
+            <p className="text-gray-500 mb-10 text-lg font-medium">Select your current proficiency in {formData.targetLang}.</p>
+            <div className="grid grid-cols-2 gap-4 mb-10">
               {cefrLevels.map(lvl => (
                 <button
                   key={lvl}
-                  onClick={() => setFormData({ ...formData, level: lvl })}
+                  onClick={() => setFormData({...formData, level: lvl})}
                   className={cn(
-                    'rounded-2xl border-2 py-6 text-2xl font-bold transition-all',
-                    formData.level === lvl
-                      ? 'border-[#1CB0F6] bg-[#DDF4FF] text-[#1CB0F6]'
-                      : 'border-gray-200 bg-white hover:bg-gray-50'
+                    "py-6 rounded-2xl text-2xl font-bold transition-all border-2",
+                    formData.level === lvl ? "bg-[#DDF4FF] border-[#1CB0F6] text-[#1CB0F6]" : "bg-white border-gray-200 hover:bg-gray-50"
                   )}
                 >
                   {lvl}
@@ -2599,56 +2503,34 @@ function Onboarding({
               ))}
             </div>
             <div className="flex gap-4">
-              <button
-                onClick={prevStep}
-                className="flex-1 rounded-2xl border-2 border-gray-200 bg-white py-5 text-lg font-bold text-gray-400 transition-all hover:bg-gray-50"
-              >
-                BACK
-              </button>
-              <button
-                onClick={nextStep}
-                className="flex-[2] rounded-2xl bg-[#58CC02] py-5 text-xl font-bold text-white shadow-[0_5px_0_#46A302] transition-all hover:translate-y-[-2px] hover:shadow-[0_7px_0_#46A302] active:translate-y-[2px] active:shadow-none"
-              >
-                CONTINUE
-              </button>
+              <button onClick={prevStep} className="flex-1 py-5 bg-white border-2 border-gray-200 text-gray-400 rounded-2xl font-bold text-lg hover:bg-gray-50 transition-all">BACK</button>
+              <button onClick={nextStep} className="flex-[2] py-5 bg-[#58CC02] text-white rounded-2xl font-bold text-xl shadow-[0_5px_0_#46A302] hover:translate-y-[-2px] hover:shadow-[0_7px_0_#46A302] active:translate-y-[2px] active:shadow-none transition-all">CONTINUE</button>
             </div>
           </motion.div>
         )}
 
         {step === 4 && (
           <motion.div initial={{ x: 20, opacity: 0 }} animate={{ x: 0, opacity: 1 }}>
-            <h2 className="mb-4 text-3xl font-bold text-[#3C3C3C]">Choose an Avatar</h2>
-            <p className="mb-10 text-lg font-medium text-gray-500">
-              Pick a look that represents you!
-            </p>
+            <h2 className="text-3xl font-bold mb-4 text-[#3C3C3C]">Choose an Avatar</h2>
+            <p className="text-gray-500 mb-10 text-lg font-medium">Pick a look that represents you!</p>
             <div className="space-y-10">
               <div className="grid grid-cols-3 gap-6">
                 {avatars.map(url => (
                   <button
                     key={url}
-                    onClick={() => setFormData({ ...formData, avatar: url })}
+                    onClick={() => setFormData({...formData, avatar: url})}
                     className={cn(
-                      'aspect-square overflow-hidden rounded-[2rem] border-4 p-2 transition-all',
-                      formData.avatar === url
-                        ? 'border-[#1CB0F6] bg-[#DDF4FF]'
-                        : 'border-gray-100 bg-gray-50 hover:bg-gray-100'
+                      "aspect-square rounded-[2rem] overflow-hidden border-4 transition-all p-2",
+                      formData.avatar === url ? "border-[#1CB0F6] bg-[#DDF4FF]" : "border-gray-100 bg-gray-50 hover:bg-gray-100"
                     )}
                   >
-                    <img src={url} alt="Avatar" className="h-full w-full object-cover" />
+                    <img src={url} alt="Avatar" className="w-full h-full object-cover" />
                   </button>
                 ))}
               </div>
               <div className="flex gap-4">
-                <button
-                  onClick={prevStep}
-                  className="flex-1 rounded-2xl border-2 border-gray-200 bg-white py-5 text-lg font-bold text-gray-400 transition-all hover:bg-gray-50"
-                >
-                  BACK
-                </button>
-                <button
-                  onClick={nextStep}
-                  className="flex-[2] rounded-2xl bg-[#58CC02] py-5 text-xl font-bold text-white shadow-[0_5px_0_#46A302] transition-all hover:translate-y-[-2px] hover:shadow-[0_7px_0_#46A302] active:translate-y-[2px] active:shadow-none"
-                >
+                <button onClick={prevStep} className="flex-1 py-5 bg-white border-2 border-gray-200 text-gray-400 rounded-2xl font-bold text-lg hover:bg-gray-50 transition-all">BACK</button>
+                <button onClick={nextStep} className="flex-[2] py-5 bg-[#58CC02] text-white rounded-2xl font-bold text-xl shadow-[0_5px_0_#46A302] hover:translate-y-[-2px] hover:shadow-[0_7px_0_#46A302] active:translate-y-[2px] active:shadow-none transition-all">
                   {formData.avatar ? 'CONTINUE' : 'SKIP'}
                 </button>
               </div>
@@ -2657,23 +2539,15 @@ function Onboarding({
         )}
 
         {step === 5 && (
-          <motion.div
-            initial={{ x: 20, opacity: 0 }}
-            animate={{ x: 0, opacity: 1 }}
-            className="text-center"
-          >
-            <div className="mx-auto mb-8 flex h-32 w-32 items-center justify-center rounded-full border-4 border-[#1CB0F6] bg-[#DDF4FF]">
-              <Check className="h-16 w-16 text-[#1CB0F6]" />
+          <motion.div initial={{ x: 20, opacity: 0 }} animate={{ x: 0, opacity: 1 }} className="text-center">
+            <div className="w-32 h-32 bg-[#DDF4FF] rounded-full flex items-center justify-center mx-auto mb-8 border-4 border-[#1CB0F6]">
+              <Check className="w-16 h-16 text-[#1CB0F6]" />
             </div>
-            <h2 className="mb-4 text-3xl font-bold text-[#3C3C3C]">
-              You're ready, {formData.name}!
-            </h2>
-            <p className="mb-12 text-lg font-medium text-gray-500">
-              Let's start our first conversation in {formData.targetLang} at level {formData.level}.
-            </p>
-            <button
+            <h2 className="text-3xl font-bold mb-4 text-[#3C3C3C]">You're ready, {formData.name}!</h2>
+            <p className="text-gray-500 mb-12 text-lg font-medium">Let's start our first conversation in {formData.targetLang} at level {formData.level}.</p>
+            <button 
               onClick={() => onComplete(formData)}
-              className="w-full rounded-2xl bg-[#58CC02] py-6 text-2xl font-bold text-white shadow-[0_6px_0_#46A302] transition-all hover:translate-y-[-2px] hover:shadow-[0_8px_0_#46A302] active:translate-y-[2px] active:shadow-none"
+              className="w-full py-6 bg-[#58CC02] text-white rounded-2xl font-bold text-2xl shadow-[0_6px_0_#46A302] hover:translate-y-[-2px] hover:shadow-[0_8px_0_#46A302] active:translate-y-[2px] active:shadow-none transition-all"
             >
               START LEARNING
             </button>

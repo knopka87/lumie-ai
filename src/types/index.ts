@@ -25,16 +25,7 @@ export interface User {
   weak_topics?: string;
 }
 
-export type CEFRLevel =
-  | 'A1'
-  | 'A2'
-  | 'B1'
-  | 'B2'
-  | 'C1'
-  | 'C2'
-  | 'beginner'
-  | 'intermediate'
-  | 'advanced';
+export type CEFRLevel = 'A1' | 'A2' | 'B1' | 'B2' | 'C1' | 'C2' | 'beginner' | 'intermediate' | 'advanced';
 
 export type Gender = 'male' | 'female' | 'other';
 

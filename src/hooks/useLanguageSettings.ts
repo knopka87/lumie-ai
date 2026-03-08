@@ -29,27 +29,25 @@ interface UseLanguageSettingsReturn {
 const STORAGE_KEY = 'lumie_language_settings';
 
 const LANG_TO_CODE: Record<Language, string> = {
-  English: 'en-US',
-  Russian: 'ru-RU',
-  Spanish: 'es-ES',
-  French: 'fr-FR',
-  German: 'de-DE',
-  Italian: 'it-IT',
-  Chinese: 'zh-CN',
-  Japanese: 'ja-JP',
-  Portuguese: 'pt-BR',
+  'English': 'en-US',
+  'Russian': 'ru-RU',
+  'Spanish': 'es-ES',
+  'French': 'fr-FR',
+  'German': 'de-DE',
+  'Italian': 'it-IT',
+  'Chinese': 'zh-CN',
+  'Japanese': 'ja-JP',
+  'Portuguese': 'pt-BR'
 };
 
-export function useLanguageSettings(
-  options: UseLanguageSettingsOptions = {}
-): UseLanguageSettingsReturn {
+export function useLanguageSettings(options: UseLanguageSettingsOptions = {}): UseLanguageSettingsReturn {
   const {
     userId,
     initialNativeLang = 'Russian',
     initialTargetLang = 'English',
     initialProvider = 'gemini',
     initialOllamaUrl = 'http://localhost:11434',
-    initialOllamaModel = 'llama3',
+    initialOllamaModel = 'llama3'
   } = options;
 
   const [nativeLang, setNativeLangState] = useState<Language>(initialNativeLang);
@@ -82,7 +80,7 @@ export function useLanguageSettings(
       targetLang,
       provider,
       ollamaUrl,
-      ollamaModel,
+      ollamaModel
     };
     localStorage.setItem(STORAGE_KEY, JSON.stringify(settings));
   }, [nativeLang, targetLang, provider, ollamaUrl, ollamaModel]);
@@ -111,38 +109,36 @@ export function useLanguageSettings(
     setOllamaModelState(model);
   }, []);
 
-  const updateLanguages = useCallback(
-    async (newNativeLang: Language, newTargetLang: Language) => {
-      setNativeLangState(newNativeLang);
-      setTargetLangState(newTargetLang);
+  const updateLanguages = useCallback(async (newNativeLang: Language, newTargetLang: Language) => {
+    setNativeLangState(newNativeLang);
+    setTargetLangState(newTargetLang);
 
-      if (userId) {
-        try {
-          await fetch('/api/user/update-languages', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-              userId,
-              nativeLang: newNativeLang,
-              targetLang: newTargetLang,
-            }),
-          });
-        } catch (err) {
-          console.error('Failed to update languages on server:', err);
-        }
+    if (userId) {
+      try {
+        await fetch('/api/user/update-languages', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            userId,
+            nativeLang: newNativeLang,
+            targetLang: newTargetLang
+          })
+        });
+      } catch (err) {
+        console.error('Failed to update languages on server:', err);
       }
-    },
-    [userId]
-  );
+    }
+  }, [userId]);
 
-  const updateProviderSettings = useCallback(
-    (newProvider: AIProvider, newUrl: string, newModel: string) => {
-      setProviderState(newProvider);
-      setOllamaUrlState(newUrl);
-      setOllamaModelState(newModel);
-    },
-    []
-  );
+  const updateProviderSettings = useCallback((
+    newProvider: AIProvider,
+    newUrl: string,
+    newModel: string
+  ) => {
+    setProviderState(newProvider);
+    setOllamaUrlState(newUrl);
+    setOllamaModelState(newModel);
+  }, []);
 
   const recognitionLangCode = LANG_TO_CODE[targetLang] || 'en-US';
 
@@ -159,6 +155,6 @@ export function useLanguageSettings(
     setOllamaModel,
     updateLanguages,
     updateProviderSettings,
-    recognitionLangCode,
+    recognitionLangCode
   };
 }

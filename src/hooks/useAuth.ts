@@ -11,25 +11,17 @@ declare global {
             callback: (response: { credential: string }) => void;
             auto_select?: boolean;
           }) => void;
-          prompt: (
-            callback?: (notification: {
-              isNotDisplayed: () => boolean;
-              isSkippedMoment: () => boolean;
-            }) => void
-          ) => void;
-          renderButton: (
-            parent: HTMLElement,
-            options: {
-              theme?: 'outline' | 'filled_blue' | 'filled_black';
-              size?: 'large' | 'medium' | 'small';
-              type?: 'standard' | 'icon';
-              text?: 'signin_with' | 'signup_with' | 'continue_with' | 'signin';
-              shape?: 'rectangular' | 'pill' | 'circle' | 'square';
-              logo_alignment?: 'left' | 'center';
-              width?: number;
-              locale?: string;
-            }
-          ) => void;
+          prompt: (callback?: (notification: { isNotDisplayed: () => boolean; isSkippedMoment: () => boolean }) => void) => void;
+          renderButton: (parent: HTMLElement, options: {
+            theme?: 'outline' | 'filled_blue' | 'filled_black';
+            size?: 'large' | 'medium' | 'small';
+            type?: 'standard' | 'icon';
+            text?: 'signin_with' | 'signup_with' | 'continue_with' | 'signin';
+            shape?: 'rectangular' | 'pill' | 'circle' | 'square';
+            logo_alignment?: 'left' | 'center';
+            width?: number;
+            locale?: string;
+          }) => void;
           disableAutoSelect: () => void;
         };
       };
@@ -83,7 +75,7 @@ function cleanUserData(userData: any): User | null {
     is_onboarded: Boolean(userData.is_onboarded),
     age: userData.age,
     gender: userData.gender,
-    avatar: userData.avatar,
+    avatar: userData.avatar
   };
 }
 
@@ -104,53 +96,47 @@ export function useAuth(): UseAuthReturn {
     }
   }, []);
 
-  const refreshUser = useCallback(
-    async (userId: string) => {
-      try {
-        const res = await fetch(`/api/user/${userId}`);
-        const data = await res.json();
-        if (data && !data.error) {
-          const cleanUser = cleanUserData(data);
-          if (cleanUser) {
-            setUser(cleanUser);
-          }
-        }
-      } catch (err) {
-        console.error('Failed to refresh user data:', err);
-      }
-    },
-    [setUser]
-  );
-
-  // Handle Google credential response
-  const handleGoogleCredential = useCallback(
-    async (credential: string) => {
-      setAuthError(null);
-      try {
-        const res = await fetch('/api/auth/google', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ credential }),
-        });
-
-        const data = await res.json();
-
-        if (data.error) {
-          setAuthError(data.error);
-          return;
-        }
-
+  const refreshUser = useCallback(async (userId: string) => {
+    try {
+      const res = await fetch(`/api/user/${userId}`);
+      const data = await res.json();
+      if (data && !data.error) {
         const cleanUser = cleanUserData(data);
         if (cleanUser) {
           setUser(cleanUser);
         }
-      } catch (err) {
-        console.error('Google Sign-In failed:', err);
-        setAuthError('Failed to sign in with Google. Please try again.');
       }
-    },
-    [setUser]
-  );
+    } catch (err) {
+      console.error("Failed to refresh user data:", err);
+    }
+  }, [setUser]);
+
+  // Handle Google credential response
+  const handleGoogleCredential = useCallback(async (credential: string) => {
+    setAuthError(null);
+    try {
+      const res = await fetch('/api/auth/google', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ credential })
+      });
+
+      const data = await res.json();
+
+      if (data.error) {
+        setAuthError(data.error);
+        return;
+      }
+
+      const cleanUser = cleanUserData(data);
+      if (cleanUser) {
+        setUser(cleanUser);
+      }
+    } catch (err) {
+      console.error('Google Sign-In failed:', err);
+      setAuthError("Failed to sign in with Google. Please try again.");
+    }
+  }, [setUser]);
 
   // Initialize Google Sign-In
   useEffect(() => {
@@ -170,7 +156,7 @@ export function useAuth(): UseAuthReturn {
 
           // Wait for Google script to load
           const waitForGoogle = () => {
-            return new Promise<void>(resolve => {
+            return new Promise<void>((resolve) => {
               if (window.google?.accounts?.id) {
                 resolve();
               } else {
@@ -195,12 +181,12 @@ export function useAuth(): UseAuthReturn {
             googleInitialized.current = true;
             window.google.accounts.id.initialize({
               client_id: data.clientId,
-              callback: response => {
+              callback: (response) => {
                 if (response.credential) {
                   handleGoogleCredential(response.credential);
                 }
               },
-              auto_select: false,
+              auto_select: false
             });
           }
         }
@@ -227,26 +213,23 @@ export function useAuth(): UseAuthReturn {
   }, [handleGoogleCredential, refreshUser]);
 
   // Render Google Sign-In button
-  const renderGoogleButton = useCallback(
-    (element: HTMLElement | null) => {
-      if (!element || !googleClientId || !window.google?.accounts?.id) return;
+  const renderGoogleButton = useCallback((element: HTMLElement | null) => {
+    if (!element || !googleClientId || !window.google?.accounts?.id) return;
 
-      try {
-        window.google.accounts.id.renderButton(element, {
-          theme: 'filled_blue',
-          size: 'large',
-          type: 'standard',
-          text: 'signin_with',
-          shape: 'rectangular',
-          logo_alignment: 'left',
-          width: 280,
-        });
-      } catch (err) {
-        console.error('Failed to render Google button:', err);
-      }
-    },
-    [googleClientId]
-  );
+    try {
+      window.google.accounts.id.renderButton(element, {
+        theme: 'filled_blue',
+        size: 'large',
+        type: 'standard',
+        text: 'signin_with',
+        shape: 'rectangular',
+        logo_alignment: 'left',
+        width: 280
+      });
+    } catch (err) {
+      console.error('Failed to render Google button:', err);
+    }
+  }, [googleClientId]);
 
   // Login function - triggers Google One Tap or falls back to demo
   const login = useCallback(async () => {
@@ -262,14 +245,14 @@ export function useAuth(): UseAuthReturn {
           setUser(cleanUser);
         }
       } catch (err) {
-        setAuthError('Failed to enter demo mode.');
+        setAuthError("Failed to enter demo mode.");
       }
       return;
     }
 
     // Trigger Google One Tap prompt
     if (window.google?.accounts?.id) {
-      window.google.accounts.id.prompt(notification => {
+      window.google.accounts.id.prompt((notification) => {
         if (notification.isNotDisplayed() || notification.isSkippedMoment()) {
           // User dismissed or One Tap not available - they can use the button
           console.log('Google One Tap not displayed, use the button instead');
@@ -288,7 +271,7 @@ export function useAuth(): UseAuthReturn {
       }
     } catch (err) {
       console.error('Demo login failed:', err);
-      setAuthError('Failed to enter demo mode.');
+      setAuthError("Failed to enter demo mode.");
     }
   }, [setUser]);
 
@@ -328,7 +311,7 @@ export function useAuth(): UseAuthReturn {
     refreshUser,
     googleClientId,
     isDemoMode,
-    renderGoogleButton,
+    renderGoogleButton
   };
 }
 
