@@ -187,9 +187,34 @@ services:
 
 ---
 
+### Миграция данных из SQLite
+
+**Скрипт:** `scripts/migrate-sqlite-to-postgres.ts`
+
+```bash
+# Убедитесь что PostgreSQL запущен
+docker-compose up -d db
+
+# Запустите миграцию
+npm run migrate:sqlite
+```
+
+**Что мигрируется:**
+- Пользователи (users)
+- Беседы (conversations)
+- Сообщения (messages)
+- Воспоминания (memory) — без embeddings (будут сгенерированы при использовании)
+- Прогресс (user_progress)
+
+**Особенности:**
+- Использует `ON CONFLICT DO NOTHING` для безопасного повторного запуска
+- Обновляет sequences для auto-increment полей
+- Конвертирует embeddings из JSON/BLOB в pgvector формат
+
+---
+
 ## Следующие шаги
 
 - [ ] Добавить Redis для кэширования
 - [ ] Настроить CI/CD с Docker
 - [ ] Добавить мониторинг (Prometheus/Grafana)
-- [ ] Миграция существующих данных из SQLite
