@@ -111,7 +111,7 @@ export async function generateEmbedding(text: string): Promise<number[] | null> 
 export async function extractFacts(text: string) {
   const aiClient = await getAI();
   const response = await aiClient.models.generateContent({
-    model: 'gemini-3-flash-preview',
+    model: 'gemini-2.0-flash',
     contents: [
       {
         parts: [
@@ -197,7 +197,7 @@ export async function generateTutorResponse(
 
   const aiClient = await getAI();
   const response = await aiClient.models.generateContent({
-    model: 'gemini-3-flash-preview',
+    model: 'gemini-2.0-flash',
     contents,
     config: {
       systemInstruction: systemPrompt,
@@ -235,7 +235,7 @@ export async function generateTutorResponseStream(
 
   const aiClient = await getAI();
   return await aiClient.models.generateContentStream({
-    model: 'gemini-3-flash-preview',
+    model: 'gemini-2.0-flash',
     contents,
     config: {
       systemInstruction: systemPrompt,
@@ -346,7 +346,7 @@ export async function generateLessonContent(topic: any, userContext: any) {
 
   const aiClient = await getAI();
   const response = await aiClient.models.generateContent({
-    model: 'gemini-3-flash-preview',
+    model: 'gemini-2.0-flash',
     contents: [{ parts: [{ text: prompt }] }],
     config: {
       responseMimeType: 'application/json',
