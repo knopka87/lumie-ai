@@ -10,7 +10,7 @@ vi.mock('../../services/geminiService', () => ({
     yield { text: 'there!' };
   }),
   generateEmbedding: vi.fn(async () => new Array(768).fill(0.1)),
-  extractFacts: vi.fn(async () => [])
+  extractFacts: vi.fn(async () => []),
 }));
 
 // Mock fetch
@@ -26,24 +26,24 @@ describe('useMessages', () => {
       if (url.includes('/api/conversations/user/')) {
         return {
           ok: true,
-          json: async () => [createMockConversation()]
+          json: async () => [createMockConversation()],
         };
       }
       if (url.includes('/api/conversations/') && url.includes('/messages')) {
         return {
           ok: true,
-          json: async () => [createMockMessage()]
+          json: async () => [createMockMessage()],
         };
       }
       if (url.includes('/api/memory/search')) {
         return {
           ok: true,
-          json: async () => []
+          json: async () => [],
         };
       }
       return {
         ok: true,
-        json: async () => ({ success: true })
+        json: async () => ({ success: true }),
       };
     });
   });
@@ -68,9 +68,7 @@ describe('useMessages', () => {
       await result.current.fetchConversations();
     });
 
-    expect(mockFetch).toHaveBeenCalledWith(
-      expect.stringContaining('/api/conversations/user/')
-    );
+    expect(mockFetch).toHaveBeenCalledWith(expect.stringContaining('/api/conversations/user/'));
   });
 
   it('should fetch messages for a conversation', async () => {
@@ -157,12 +155,10 @@ describe('useMessages', () => {
     const onFactExtracted = vi.fn();
 
     vi.mocked(await import('../../services/geminiService')).extractFacts.mockResolvedValueOnce([
-      { topic: 'test', text: 'Test fact' }
+      { topic: 'test', text: 'Test fact' },
     ]);
 
-    const { result } = renderHook(() =>
-      useMessages({ user: mockUser, onFactExtracted })
-    );
+    const { result } = renderHook(() => useMessages({ user: mockUser, onFactExtracted }));
 
     // Create conversation first
     await act(async () => {
@@ -174,9 +170,12 @@ describe('useMessages', () => {
     });
 
     // The callback should be called with extracted facts
-    await waitFor(() => {
-      expect(onFactExtracted).toHaveBeenCalled();
-    }, { timeout: 2000 }).catch(() => {
+    await waitFor(
+      () => {
+        expect(onFactExtracted).toHaveBeenCalled();
+      },
+      { timeout: 2000 }
+    ).catch(() => {
       // May not be called if facts are empty, which is OK
     });
   });

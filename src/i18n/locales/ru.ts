@@ -20,7 +20,8 @@ export const ru = {
 
   // Chat
   'chat.greeting': 'Привет, {{name}}!',
-  'chat.readyToPractice': 'Готовы практиковать {{language}} сегодня? Я помогу вам говорить естественно.',
+  'chat.readyToPractice':
+    'Готовы практиковать {{language}} сегодня? Я помогу вам говорить естественно.',
   'chat.placeholder': 'Напишите Lumie на {{language}}...',
   'chat.hints.hello': 'Как сказать "привет" на {{language}}?',
   'chat.hints.coffeeShop': 'Давай попрактикуем разговор в кофейне',
@@ -107,7 +108,8 @@ export const ru = {
   'onboarding.step4.skip': 'ПРОПУСТИТЬ',
 
   'onboarding.step5.title': 'Вы готовы, {{name}}!',
-  'onboarding.step5.subtitle': 'Давайте начнём наш первый разговор на {{language}} на уровне {{level}}.',
+  'onboarding.step5.subtitle':
+    'Давайте начнём наш первый разговор на {{language}} на уровне {{level}}.',
 
   // Errors
   'error.title': 'Что-то пошло не так',
@@ -133,9 +135,11 @@ export const ru = {
 
   // Additional Errors
   'error.onboardingFailed': 'Что-то пошло не так при настройке. Попробуйте снова.',
-  'error.micInstructions': 'Нажмите на значок замка в адресной строке браузера и установите "Разрешить" для микрофона.',
+  'error.micInstructions':
+    'Нажмите на значок замка в адресной строке браузера и установите "Разрешить" для микрофона.',
   'error.speechNotSupported': 'Распознавание речи не поддерживается в этом браузере.',
   'error.liveModeError': 'Ошибка Live режима. Попробуйте снова.',
   'error.rateLimit': 'Достигнут лимит API. Подождите {{seconds}} секунд.',
-  'error.rateLimitMessage': 'Мне нужна небольшая пауза! AI сервис временно занят. Подождите немного и попробуйте снова, или начните новый разговор.',
+  'error.rateLimitMessage':
+    'Мне нужна небольшая пауза! AI сервис временно занят. Подождите немного и попробуйте снова, или начните новый разговор.',
 };

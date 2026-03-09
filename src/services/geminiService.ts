@@ -1,7 +1,7 @@
-import { GoogleGenAI, Modality, Type } from "@google/genai";
-import { pipeline } from "@xenova/transformers";
+import { GoogleGenAI, Modality, Type } from '@google/genai';
+import { pipeline } from '@xenova/transformers';
 
-const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY || "" });
+const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY || '' });
 
 // Local embedding pipeline
 let embeddingPipeline: any = null;
@@ -84,15 +84,19 @@ export async function generateEmbedding(text: string) {
     const output = await pipe(text, { pooling: 'mean', normalize: true });
     return Array.from(output.data);
   } catch (error) {
-    console.warn("Local embedding generation failed:", error);
+    console.warn('Local embedding generation failed:', error);
     return null;
   }
 }
 
 export async function extractFacts(text: string) {
   const response = await ai.models.generateContent({
-    model: "gemini-3-flash-preview",
-    contents: [{ parts: [{ text: `Extract ALL valuable information about the user from this text.
+    model: 'gemini-3-flash-preview',
+    contents: [
+      {
+        parts: [
+          {
+            text: `Extract ALL valuable information about the user from this text.
     Be extremely thorough and preserve EVERY SINGLE detail. 
     
     CRITICAL RULES:
@@ -112,13 +116,17 @@ export async function extractFacts(text: string) {
     If no valuable information is found, return [].
     
     Text:
-    "${text}"` }] }],
+    "${text}"`,
+          },
+        ],
+      },
+    ],
     config: {
-      responseMimeType: "application/json",
-    }
+      responseMimeType: 'application/json',
+    },
   });
   try {
-    return JSON.parse(response.text || "[]");
+    return JSON.parse(response.text || '[]');
   } catch (e) {
     return [];
   }
@@ -127,49 +135,63 @@ export async function extractFacts(text: string) {
 export function getSystemPrompt(userContext: any, memories: any[] = []) {
   const memoriesArray = Array.isArray(memories) ? memories : [];
   const memoryText = memoriesArray.map(m => `- ${m.topic}: ${m.summary}`).join('\n');
-  
+
   const voice = userContext?.voice || 'lumie';
   const personaName = voice === 'leo' ? 'Leo' : 'Lumie';
   const personaGender = voice === 'leo' ? 'man' : 'woman';
-  const personaTraits = voice === 'leo' 
-    ? 'You have a warm, empathetic male voice. You are supportive and encouraging.' 
-    : 'You have a warm, empathetic, and cheerful female voice. You are very positive, energetic, and friendly.';
+  const personaTraits =
+    voice === 'leo'
+      ? 'You have a warm, empathetic male voice. You are supportive and encouraging.'
+      : 'You have a warm, empathetic, and cheerful female voice. You are very positive, energetic, and friendly.';
 
-  return TUTOR_SYSTEM_INSTRUCTION
-    .replace(/{{persona_name}}/g, personaName)
+  return TUTOR_SYSTEM_INSTRUCTION.replace(/{{persona_name}}/g, personaName)
     .replace(/{{persona_gender}}/g, personaGender)
     .replace(/{{persona_traits}}/g, personaTraits)
     .replace(/{{name}}/g, userContext?.name || 'Student')
     .replace(/{{native_lang}}/g, userContext?.native_lang || 'Russian')
     .replace(/{{target_lang}}/g, userContext?.target_lang || 'English')
     .replace(/{{level}}/g, userContext?.level || 'beginner')
-    .replace(/{{memories}}/g, memoryText || "No memories yet. Ask the user about themselves!");
+    .replace(/{{memories}}/g, memoryText || 'No memories yet. Ask the user about themselves!');
 }
 
-export async function generateTutorResponse(messages: { role: string, content: string }[], userContext: any, memories: any[] = []) {
+export async function generateTutorResponse(
+  messages: { role: string; content: string }[],
+  userContext: any,
+  memories: any[] = []
+) {
   const systemPrompt = getSystemPrompt(userContext, memories);
 
   // Ensure contents is never empty
-  const contents = messages.length > 0 
-    ? messages.map(m => ({
-        role: m.role === 'user' ? 'user' : 'model',
-        parts: [{ text: m.content }]
-      }))
-    : [{ role: 'user', parts: [{ text: 'Hello! I am ready to start our language learning session.' }] }];
+  const contents =
+    messages.length > 0
+      ? messages.map(m => ({
+          role: m.role === 'user' ? 'user' : 'model',
+          parts: [{ text: m.content }],
+        }))
+      : [
+          {
+            role: 'user',
+            parts: [{ text: 'Hello! I am ready to start our language learning session.' }],
+          },
+        ];
 
   const response = await ai.models.generateContent({
-    model: "gemini-3-flash-preview",
+    model: 'gemini-3-flash-preview',
     contents,
     config: {
       systemInstruction: systemPrompt,
-    }
+    },
   });
   return response.text;
 }
 
-export async function generateTutorResponseStream(messages: { role: string, content: string }[], userContext: any, memories: any[] = []) {
+export async function generateTutorResponseStream(
+  messages: { role: string; content: string }[],
+  userContext: any,
+  memories: any[] = []
+) {
   const provider = userContext.provider || 'gemini';
-  
+
   if (provider === 'ollama') {
     return generateOllamaResponseStream(messages, userContext, memories);
   }
@@ -177,26 +199,32 @@ export async function generateTutorResponseStream(messages: { role: string, cont
   const systemPrompt = getSystemPrompt(userContext, memories);
 
   // Ensure contents is never empty
-  const contents = messages.length > 0 
-    ? messages.map(m => ({
-        role: m.role === 'user' ? 'user' : 'model',
-        parts: [{ text: m.content }]
-      }))
-    : [{ role: 'user', parts: [{ text: 'Hello! I am ready to start our language learning session.' }] }];
+  const contents =
+    messages.length > 0
+      ? messages.map(m => ({
+          role: m.role === 'user' ? 'user' : 'model',
+          parts: [{ text: m.content }],
+        }))
+      : [
+          {
+            role: 'user',
+            parts: [{ text: 'Hello! I am ready to start our language learning session.' }],
+          },
+        ];
 
   return await ai.models.generateContentStream({
-    model: "gemini-3-flash-preview",
+    model: 'gemini-3-flash-preview',
     contents,
     config: {
       systemInstruction: systemPrompt,
-    }
+    },
   });
 }
 
 async function generateOllamaResponseStream(messages: any[], userContext: any, memories: any[]) {
   const ollamaUrl = userContext.ollama_url || 'http://localhost:11434';
   const model = userContext.ollama_model || 'llama3';
-  
+
   const systemPrompt = getSystemPrompt(userContext, memories);
 
   const response = await fetch(`${ollamaUrl}/api/chat`, {
@@ -206,14 +234,16 @@ async function generateOllamaResponseStream(messages: any[], userContext: any, m
       model: model,
       messages: [
         { role: 'system', content: systemPrompt },
-        ...messages.map(m => ({ role: m.role, content: m.content }))
+        ...messages.map(m => ({ role: m.role, content: m.content })),
       ],
-      stream: true
-    })
+      stream: true,
+    }),
   });
 
   if (!response.ok) {
-    throw new Error(`Ollama error: ${response.statusText}. Make sure Ollama is running with OLLAMA_ORIGINS="*"`);
+    throw new Error(
+      `Ollama error: ${response.statusText}. Make sure Ollama is running with OLLAMA_ORIGINS="*"`
+    );
   }
 
   const reader = response.body?.getReader();
@@ -224,10 +254,10 @@ async function generateOllamaResponseStream(messages: any[], userContext: any, m
       while (true) {
         const { done, value } = await reader!.read();
         if (done) break;
-        
+
         const chunk = decoder.decode(value, { stream: true });
         const lines = chunk.split('\n');
-        
+
         for (const line of lines) {
           if (!line.trim()) continue;
           try {
@@ -240,7 +270,7 @@ async function generateOllamaResponseStream(messages: any[], userContext: any, m
           }
         }
       }
-    }
+    },
   };
 }
 
@@ -249,9 +279,9 @@ export async function generateSpeech(text: string, voice: string = 'lumie') {
   // We keep the Maya personality through the system prompt and expressive text
   try {
     const voiceName = voice === 'leo' ? 'Charon' : 'Kore';
-    
+
     const response = await ai.models.generateContent({
-      model: "gemini-2.5-flash-preview-tts",
+      model: 'gemini-2.5-flash-preview-tts',
       contents: [{ parts: [{ text }] }],
       config: {
         responseModalities: [Modality.AUDIO],
@@ -266,7 +296,7 @@ export async function generateSpeech(text: string, voice: string = 'lumie') {
     const data = response.candidates?.[0]?.content?.parts?.[0]?.inlineData?.data;
     return data ? { data, format: 'pcm' } : null;
   } catch (e) {
-    console.error("Gemini TTS failed:", e);
+    console.error('Gemini TTS failed:', e);
     return null;
   }
 }
@@ -292,17 +322,17 @@ export async function generateLessonContent(topic: any, userContext: any) {
   }`;
 
   const response = await ai.models.generateContent({
-    model: "gemini-3-flash-preview",
+    model: 'gemini-3-flash-preview',
     contents: [{ parts: [{ text: prompt }] }],
     config: {
-      responseMimeType: "application/json",
-    }
+      responseMimeType: 'application/json',
+    },
   });
 
   try {
-    return JSON.parse(response.text || "{}");
+    return JSON.parse(response.text || '{}');
   } catch (e) {
-    console.error("Failed to parse lesson content:", e);
+    console.error('Failed to parse lesson content:', e);
     return null;
   }
 }

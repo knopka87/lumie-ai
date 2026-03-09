@@ -12,38 +12,40 @@ type FetchMockHandler = (url: string, options?: RequestInit) => Promise<MockFetc
 
 const handlers: Map<string, FetchMockHandler> = new Map();
 
-export const mockFetch = vi.fn(async (input: RequestInfo | URL, init?: RequestInit): Promise<MockFetchResponse> => {
-  const url = typeof input === 'string' ? input : input.toString();
-  const method = init?.method || 'GET';
-  const key = `${method}:${url}`;
+export const mockFetch = vi.fn(
+  async (input: RequestInfo | URL, init?: RequestInit): Promise<MockFetchResponse> => {
+    const url = typeof input === 'string' ? input : input.toString();
+    const method = init?.method || 'GET';
+    const key = `${method}:${url}`;
 
-  // Try exact match first
-  if (handlers.has(key)) {
-    return handlers.get(key)!(url, init);
-  }
-
-  // Try pattern matching
-  for (const [pattern, handler] of handlers) {
-    if (url.includes(pattern.replace(/^(GET|POST|PUT|DELETE):/, '').split('?')[0])) {
-      return handler(url, init);
+    // Try exact match first
+    if (handlers.has(key)) {
+      return handlers.get(key)!(url, init);
     }
-  }
 
-  // Default response
-  return {
-    ok: true,
-    status: 200,
-    json: async () => ({}),
-    text: async () => ''
-  };
-});
+    // Try pattern matching
+    for (const [pattern, handler] of handlers) {
+      if (url.includes(pattern.replace(/^(GET|POST|PUT|DELETE):/, '').split('?')[0])) {
+        return handler(url, init);
+      }
+    }
+
+    // Default response
+    return {
+      ok: true,
+      status: 200,
+      json: async () => ({}),
+      text: async () => '',
+    };
+  }
+);
 
 export function mockFetchResponse<T>(urlPattern: string, response: T, method = 'GET') {
   handlers.set(`${method}:${urlPattern}`, async () => ({
     ok: true,
     status: 200,
     json: async () => response,
-    text: async () => JSON.stringify(response)
+    text: async () => JSON.stringify(response),
   }));
 }
 
@@ -52,7 +54,7 @@ export function mockFetchError(urlPattern: string, error: string, status = 500, 
     ok: false,
     status,
     json: async () => ({ error }),
-    text: async () => error
+    text: async () => error,
   }));
 }
 
@@ -75,7 +77,7 @@ export const mockUserResponse: User = {
   level: 'A2',
   points: 100,
   streak: 5,
-  is_onboarded: true
+  is_onboarded: true,
 };
 
 export const mockConversationsResponse: Conversation[] = [
@@ -83,14 +85,14 @@ export const mockConversationsResponse: Conversation[] = [
     id: 'conv-1',
     user_id: 'test-user-123',
     title: 'Learning Session',
-    created_at: new Date().toISOString()
+    created_at: new Date().toISOString(),
   },
   {
     id: 'conv-2',
     user_id: 'test-user-123',
     title: 'Practice Talk',
-    created_at: new Date().toISOString()
-  }
+    created_at: new Date().toISOString(),
+  },
 ];
 
 export const mockMessagesResponse: Message[] = [
@@ -100,7 +102,7 @@ export const mockMessagesResponse: Message[] = [
     role: 'assistant',
     content: 'Hello! How can I help you today?',
     type: 'text',
-    created_at: new Date().toISOString()
+    created_at: new Date().toISOString(),
   },
   {
     id: 2,
@@ -108,8 +110,8 @@ export const mockMessagesResponse: Message[] = [
     role: 'user',
     content: 'I want to learn English',
     type: 'text',
-    created_at: new Date().toISOString()
-  }
+    created_at: new Date().toISOString(),
+  },
 ];
 
 export const mockMemoriesResponse: Memory[] = [
@@ -117,14 +119,14 @@ export const mockMemoriesResponse: Memory[] = [
     id: 1,
     user_id: 'test-user-123',
     topic: 'interests',
-    summary: 'User likes reading books'
+    summary: 'User likes reading books',
   },
   {
     id: 2,
     user_id: 'test-user-123',
     topic: 'learning',
-    summary: 'User struggles with past tense'
-  }
+    summary: 'User struggles with past tense',
+  },
 ];
 
 export function setupCommonFetchMocks() {

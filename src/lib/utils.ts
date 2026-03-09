@@ -21,11 +21,11 @@ export function pcmToWav(base64Pcm: string, sampleRate: number = 24000): string 
   for (let i = 0; i < len; i++) {
     pcmData[i] = binaryString.charCodeAt(i);
   }
-  
+
   const numChannels = 1;
   const bitsPerSample = 16;
-  const byteRate = sampleRate * numChannels * bitsPerSample / 8;
-  const blockAlign = numChannels * bitsPerSample / 8;
+  const byteRate = (sampleRate * numChannels * bitsPerSample) / 8;
+  const blockAlign = (numChannels * bitsPerSample) / 8;
   const dataSize = pcmData.length;
   const chunkSize = 36 + dataSize;
 
@@ -57,7 +57,7 @@ export function pcmToWav(base64Pcm: string, sampleRate: number = 24000): string 
 
   // Convert to base64 using a chunked approach to avoid stack overflow
   let binary = '';
-  const chunkLen = 0x8000; 
+  const chunkLen = 0x8000;
   for (let i = 0; i < wavData.length; i += chunkLen) {
     const chunk = wavData.subarray(i, i + chunkLen);
     binary += String.fromCharCode.apply(null, Array.from(chunk));

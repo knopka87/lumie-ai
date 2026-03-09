@@ -12,7 +12,7 @@ describe('useLanguageSettings', () => {
     mockFetch.mockReset();
     mockFetch.mockResolvedValue({
       ok: true,
-      json: async () => ({ success: true })
+      json: async () => ({ success: true }),
     });
   });
 
@@ -31,11 +31,13 @@ describe('useLanguageSettings', () => {
   });
 
   it('should initialize with custom values', () => {
-    const { result } = renderHook(() => useLanguageSettings({
-      initialNativeLang: 'English',
-      initialTargetLang: 'Spanish',
-      initialProvider: 'ollama'
-    }));
+    const { result } = renderHook(() =>
+      useLanguageSettings({
+        initialNativeLang: 'English',
+        initialTargetLang: 'Spanish',
+        initialProvider: 'ollama',
+      })
+    );
 
     expect(result.current.nativeLang).toBe('English');
     expect(result.current.targetLang).toBe('Spanish');
@@ -85,9 +87,11 @@ describe('useLanguageSettings', () => {
   });
 
   it('should update languages and call API when userId provided', async () => {
-    const { result } = renderHook(() => useLanguageSettings({
-      userId: 'test-user-123'
-    }));
+    const { result } = renderHook(() =>
+      useLanguageSettings({
+        userId: 'test-user-123',
+      })
+    );
 
     await act(async () => {
       await result.current.updateLanguages('English', 'French');
@@ -98,7 +102,7 @@ describe('useLanguageSettings', () => {
     expect(mockFetch).toHaveBeenCalledWith(
       '/api/user/update-languages',
       expect.objectContaining({
-        method: 'POST'
+        method: 'POST',
       })
     );
   });
@@ -114,9 +118,11 @@ describe('useLanguageSettings', () => {
   });
 
   it('should return correct recognition language code', () => {
-    const { result } = renderHook(() => useLanguageSettings({
-      initialTargetLang: 'Russian'
-    }));
+    const { result } = renderHook(() =>
+      useLanguageSettings({
+        initialTargetLang: 'Russian',
+      })
+    );
 
     expect(result.current.recognitionLangCode).toBe('ru-RU');
   });
@@ -134,11 +140,14 @@ describe('useLanguageSettings', () => {
   });
 
   it('should load settings from localStorage', () => {
-    localStorage.setItem('lumie_language_settings', JSON.stringify({
-      nativeLang: 'Spanish',
-      targetLang: 'German',
-      provider: 'ollama'
-    }));
+    localStorage.setItem(
+      'lumie_language_settings',
+      JSON.stringify({
+        nativeLang: 'Spanish',
+        targetLang: 'German',
+        provider: 'ollama',
+      })
+    );
 
     const { result } = renderHook(() => useLanguageSettings());
 

@@ -23,7 +23,9 @@ export class MigrationRunner {
   }
 
   async getAppliedVersions(): Promise<number[]> {
-    const rows = await query<{ version: number }>('SELECT version FROM _migrations ORDER BY version');
+    const rows = await query<{ version: number }>(
+      'SELECT version FROM _migrations ORDER BY version'
+    );
     return rows.map(r => r.version);
   }
 

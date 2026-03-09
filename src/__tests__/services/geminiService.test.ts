@@ -5,16 +5,16 @@ vi.mock('@google/genai', () => ({
   GoogleGenAI: vi.fn().mockImplementation(() => ({
     models: {
       generateContent: vi.fn(),
-      generateContentStream: vi.fn()
-    }
+      generateContentStream: vi.fn(),
+    },
   })),
   Modality: { AUDIO: 'audio', TEXT: 'text' },
-  Type: { ARRAY: 'array', OBJECT: 'object', STRING: 'string' }
+  Type: { ARRAY: 'array', OBJECT: 'object', STRING: 'string' },
 }));
 
 // Mock xenova/transformers
 vi.mock('@xenova/transformers', () => ({
-  pipeline: vi.fn()
+  pipeline: vi.fn(),
 }));
 
 describe('geminiService', () => {

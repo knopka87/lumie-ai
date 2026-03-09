@@ -9,7 +9,7 @@ export class MockAudioContext {
     connect: vi.fn(),
     start: vi.fn(),
     stop: vi.fn(),
-    onended: null
+    onended: null,
   }));
 
   createBuffer = vi.fn((channels: number, length: number, sampleRate: number) => ({
@@ -17,14 +17,14 @@ export class MockAudioContext {
     length,
     sampleRate,
     getChannelData: vi.fn(() => new Float32Array(length)),
-    copyToChannel: vi.fn()
+    copyToChannel: vi.fn(),
   }));
 
   decodeAudioData = vi.fn(async (buffer: ArrayBuffer) => ({
     numberOfChannels: 1,
     length: buffer.byteLength / 2,
     sampleRate: 24000,
-    getChannelData: vi.fn(() => new Float32Array(buffer.byteLength / 2))
+    getChannelData: vi.fn(() => new Float32Array(buffer.byteLength / 2)),
   }));
 
   get destination() {
@@ -96,7 +96,8 @@ export class MockHTMLAudioElement {
 
 export function setupAudioMocks() {
   global.AudioContext = MockAudioContext as unknown as typeof AudioContext;
-  (global as unknown as { webkitAudioContext: typeof AudioContext }).webkitAudioContext = MockAudioContext as unknown as typeof AudioContext;
+  (global as unknown as { webkitAudioContext: typeof AudioContext }).webkitAudioContext =
+    MockAudioContext as unknown as typeof AudioContext;
 
   vi.spyOn(document, 'createElement').mockImplementation((tagName: string) => {
     if (tagName === 'audio') {

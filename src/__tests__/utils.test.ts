@@ -28,7 +28,7 @@ describe('utils', () => {
   describe('pcmToWav', () => {
     it('should convert base64 PCM to WAV format', () => {
       // Create simple test PCM data (4 bytes = 2 samples)
-      const pcmData = new Uint8Array([0x00, 0x00, 0xFF, 0x7F]); // 0 and max positive
+      const pcmData = new Uint8Array([0x00, 0x00, 0xff, 0x7f]); // 0 and max positive
       const base64Pcm = btoa(String.fromCharCode(...pcmData));
 
       const wavBase64 = pcmToWav(base64Pcm, 16000);
