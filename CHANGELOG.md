@@ -1,5 +1,9 @@
 # Changelog - Lumie AI
 
+Лог изменений проекта с описанием новых функций, исправлений и архитектурных решений.
+
+---
+
 ## 2026-03-09
 
 ### Миграция на PostgreSQL + Docker
@@ -112,6 +116,39 @@ docker-compose logs -f app
 **Добавленные зависимости:**
 - `pg` — PostgreSQL клиент
 - `@types/pg` — TypeScript типы
+
+**Архитектурные решения:**
+
+| Критерий | SQLite | PostgreSQL |
+|----------|--------|------------|
+| Кроссплатформенность | ❌ sqlite-vss не работает на Windows | ✅ Docker везде |
+| Масштабируемость | Ограничена | Высокая |
+| Векторный поиск | sqlite-vss (экспериментальный) | pgvector (production-ready) |
+| Деплой | Файловая БД | Контейнер |
+| Concurrent writes | Ограничены | Полная поддержка |
+
+**Почему pgvector:**
+- Нативная поддержка в PostgreSQL 16+
+- IVFFlat индексы для O(log n) поиска
+- Поддержка разных метрик (L2, cosine, inner product)
+- Активное развитие и community
+
+---
+
+#### 44. Миграция данных из SQLite
+
+**Скрипт:** `scripts/migrate-sqlite-to-postgres.ts`
+
+```bash
+npm run migrate:sqlite
+```
+
+**Что мигрируется:** users, conversations, messages, memory, user_progress
+
+**Особенности:**
+- `ON CONFLICT DO NOTHING` для безопасного повторного запуска
+- Обновление sequences для auto-increment полей
+- Конвертация embeddings из JSON/BLOB в pgvector формат
 
 ---
 
