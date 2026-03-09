@@ -1,5 +1,9 @@
 import { GoogleGenAI, Modality, Type } from '@google/genai';
-import { pipeline } from '@xenova/transformers';
+import { pipeline, env } from '@xenova/transformers';
+
+// Configure transformers.js to load models from Hugging Face CDN
+env.allowLocalModels = false;
+env.useBrowserCache = true;
 
 // Lazy initialization - API key is fetched from server
 let ai: GoogleGenAI | null = null;
