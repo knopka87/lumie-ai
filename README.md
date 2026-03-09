@@ -19,6 +19,53 @@ Lumie AI — это интерактивный AI-репетитор для из
 
 ---
 
+## Установка Docker
+
+Docker нужен для запуска PostgreSQL с pgvector.
+
+### macOS
+
+```bash
+# Вариант 1: Через Homebrew (рекомендуется)
+brew install --cask docker
+
+# Вариант 2: Скачайте Docker Desktop
+# https://www.docker.com/products/docker-desktop/
+```
+
+После установки запустите Docker Desktop из Applications.
+
+### Windows
+
+1. Скачайте **Docker Desktop** с https://www.docker.com/products/docker-desktop/
+2. Запустите установщик и следуйте инструкциям
+3. Перезагрузите компьютер если потребуется
+4. Запустите Docker Desktop
+
+> **Примечание:** На Windows 10/11 Home может потребоваться включить WSL 2. Docker Desktop предложит это сделать автоматически.
+
+### Linux (Ubuntu/Debian)
+
+```bash
+# Установка Docker
+curl -fsSL https://get.docker.com | sudo sh
+
+# Добавьте пользователя в группу docker (чтобы не использовать sudo)
+sudo usermod -aG docker $USER
+
+# Перезайдите в систему или выполните
+newgrp docker
+```
+
+### Проверка установки
+
+```bash
+docker --version          # Docker version 24.x или выше
+docker-compose --version  # Docker Compose version 2.x или выше
+```
+
+---
+
 ## Быстрый старт
 
 ### Вариант A: Запуск через Docker (рекомендуется)
