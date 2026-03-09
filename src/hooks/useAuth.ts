@@ -271,19 +271,22 @@ export function useAuth(): UseAuthReturn {
       return;
     }
 
-    // Trigger Google One Tap prompt with FedCM support
-    if (window.google?.accounts?.id) {
+    // Only use One Tap prompt on HTTPS (production)
+    // On localhost (HTTP), FedCM causes errors - users should click the Google button
+    const isSecureContext = window.location.protocol === 'https:';
+    if (window.google?.accounts?.id && isSecureContext) {
       try {
         window.google.accounts.id.prompt(notification => {
-          // These methods are deprecated but still needed for non-FedCM browsers
           if (notification?.isNotDisplayed?.() || notification?.isSkippedMoment?.()) {
             console.log('Google One Tap not displayed, use the button instead');
           }
         });
       } catch (err) {
-        // FedCM may throw errors in some browsers - graceful fallback
         console.log('Google Sign-In prompt failed, use the button instead:', err);
       }
+    } else if (window.google?.accounts?.id) {
+      // On HTTP (localhost), just log that user should use the button
+      console.log('Google Sign-In: use the button to sign in (One Tap disabled on HTTP)');
     }
   }, [isDemoMode, googleClientId, setUser]);
 
