@@ -194,6 +194,8 @@ export function useAuth(): UseAuthReturn {
 
           if (window.google?.accounts?.id && !googleInitialized.current) {
             googleInitialized.current = true;
+            // FedCM requires HTTPS, only enable on production
+            const isSecureContext = window.location.protocol === 'https:';
             window.google.accounts.id.initialize({
               client_id: data.clientId,
               callback: response => {
@@ -202,7 +204,7 @@ export function useAuth(): UseAuthReturn {
                 }
               },
               auto_select: false,
-              use_fedcm_for_prompt: true, // Opt-in to FedCM for Google Sign-In migration
+              use_fedcm_for_prompt: isSecureContext,
             });
           }
         }
