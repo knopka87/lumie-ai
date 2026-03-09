@@ -9,11 +9,12 @@ Lumie AI — это интерактивный AI-репетитор для из
 - **Исправление ошибок** — AI объясняет ваши ошибки на родном языке
 - **Персонализация** — AI запоминает информацию о вас
 - **Учебный план CEFR** — 250+ тем от A1 до C2
-- **Векторный поиск** — умный поиск по памяти через sqlite-vss
+- **Векторный поиск** — умный поиск по памяти через pgvector
 
 ## Системные требования
 
 - **Node.js** 18+
+- **Docker** и **Docker Compose** (для PostgreSQL)
 - **Windows**, **macOS**, **Linux** — полная поддержка
 
 ---
@@ -51,7 +52,17 @@ cd lumie-ai
 
 ---
 
-### Шаг 3: Установите зависимости
+### Шаг 3: Запустите PostgreSQL
+
+```bash
+docker-compose up -d db
+```
+
+Это запустит PostgreSQL 16 с pgvector на порту 5433.
+
+---
+
+### Шаг 4: Установите зависимости
 
 ```bash
 npm install
@@ -61,7 +72,7 @@ npm install
 
 ---
 
-### Шаг 4: Получите Gemini API ключ
+### Шаг 5: Получите Gemini API ключ
 
 1. Откройте https://aistudio.google.com/apikey
 2. Нажмите **"Create API Key"**
@@ -69,7 +80,7 @@ npm install
 
 ---
 
-### Шаг 5: Получите Google Client ID
+### Шаг 6: Получите Google Client ID
 
 1. Перейдите на https://console.cloud.google.com/apis/credentials
 2. Нажмите **"Create Credentials"** → **"OAuth client ID"**
@@ -88,11 +99,12 @@ npm install
 
 ---
 
-### Шаг 6: Настройте переменные окружения
+### Шаг 7: Настройте переменные окружения
 
-Откройте файл `.env` и заполните:
+Скопируйте `.env.example` в `.env.local` и заполните:
 
 ```env
+DATABASE_URL=postgres://lumie:lumie_secret@localhost:5433/lumie
 GEMINI_API_KEY="AIzaSy...ваш_ключ_здесь..."
 GOOGLE_CLIENT_ID="123456789-abc.apps.googleusercontent.com"
 APP_URL="http://localhost:3000"
@@ -100,7 +112,7 @@ APP_URL="http://localhost:3000"
 
 ---
 
-### Шаг 7: Запустите приложение
+### Шаг 8: Запустите приложение
 
 ```bash
 npm run dev
@@ -123,6 +135,8 @@ npm run dev
 
 | Команда | Описание |
 |---------|----------|
+| `docker-compose up -d db` | Запуск PostgreSQL |
+| `docker-compose up -d` | Запуск всего в Docker |
 | `npm run dev` | Запуск в режиме разработки |
 | `npm run build` | Сборка для продакшена |
 | `npm run test` | Запуск тестов (watch mode) |
@@ -142,9 +156,12 @@ lumie-ai/
 │   ├── hooks/               # React хуки
 │   ├── services/            # Сервисы (Gemini, TTS)
 │   ├── i18n/                # Локализация (en/ru)
-│   └── db/                  # Миграции базы данных
+│   └── db/
+│       ├── client.ts        # PostgreSQL connection pool
+│       └── migrations.ts    # Миграции базы данных
 ├── server.ts                # Express сервер
-├── tutor.db                 # SQLite база данных
+├── Dockerfile               # Docker образ приложения
+├── docker-compose.yml       # Оркестрация сервисов
 └── .env.local               # Переменные окружения
 ```
 
@@ -153,7 +170,8 @@ lumie-ai/
 ## Технологии
 
 - **Frontend:** React, TypeScript, Tailwind CSS, Framer Motion
-- **Backend:** Express.js, SQLite, sqlite-vss (векторный поиск)
+- **Backend:** Express.js, PostgreSQL 16, pgvector
+- **Infrastructure:** Docker, Docker Compose
 - **AI:** Google Gemini API, Gemini Live API (голос)
 - **Embeddings:** all-MiniLM-L6-v2 (локально через Xenova/transformers)
 
@@ -170,8 +188,11 @@ lumie-ai/
 ### "Microphone access denied"
 Нажмите на замок в адресной строке браузера → разрешите микрофон.
 
-### "sqlite-vss not available" (Windows)
-Это нормально! На Windows sqlite-vss не поддерживается. Приложение автоматически использует JavaScript fallback для векторного поиска. Функционально разницы нет.
+### "Cannot connect to database"
+Убедитесь, что PostgreSQL запущен: `docker-compose up -d db`
+
+### "Port 5432 already in use"
+По умолчанию используется порт 5433 для Docker PostgreSQL. Проверьте `DATABASE_URL` в `.env.local`.
 
 ---
 

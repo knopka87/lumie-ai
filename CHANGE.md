@@ -1,5 +1,150 @@
 # Changelog - Lumie AI
 
+## 2026-03-09
+
+### Миграция на PostgreSQL + Docker
+
+#### 41. Переход с SQLite на PostgreSQL с pgvector
+
+**Причины миграции:**
+- sqlite-vss не поддерживается на Windows
+- Ограниченная масштабируемость SQLite
+- Необходимость в production-ready решении
+- pgvector предоставляет более эффективный векторный поиск
+
+**Новая архитектура:**
+
+```
+┌─────────────────────────────────────────────────────┐
+│                 docker-compose                       │
+│  ┌─────────────────┐    ┌─────────────────────────┐ │
+│  │   lumie-app     │    │      lumie-db           │ │
+│  │   (Node.js)     │───▶│   (PostgreSQL 16)       │ │
+│  │   Port: 3000    │    │   + pgvector extension  │ │
+│  └─────────────────┘    │   Port: 5433            │ │
+│                         │   Volume: pgdata        │ │
+│                         └─────────────────────────┘ │
+└─────────────────────────────────────────────────────┘
+```
+
+**Созданные файлы:**
+
+| Файл | Описание |
+|------|----------|
+| `Dockerfile` | Multi-stage Node.js образ |
+| `docker-compose.yml` | PostgreSQL + App оркестрация |
+| `.dockerignore` | Исключения для Docker build |
+| `src/db/client.ts` | PostgreSQL connection pool |
+| `.env.example` | Шаблон переменных окружения |
+
+**Изменённые файлы:**
+
+| Файл | Изменения |
+|------|-----------|
+| `server.ts` | Async/await, $1/$2 placeholders, pgvector |
+| `src/db/migrations.ts` | PostgreSQL синтаксис, vector(384), IVFFlat index |
+| `package.json` | pg вместо better-sqlite3/sqlite-vss |
+
+**Ключевые преобразования SQL:**
+
+| SQLite | PostgreSQL |
+|--------|------------|
+| `INTEGER PRIMARY KEY AUTOINCREMENT` | `SERIAL PRIMARY KEY` |
+| `BLOB` | `vector(384)` |
+| `?` placeholders | `$1, $2, $3...` |
+| `INSERT OR REPLACE` | `INSERT ... ON CONFLICT DO UPDATE` |
+| `INSERT OR IGNORE` | `INSERT ... ON CONFLICT DO NOTHING` |
+| `vss_search()` | `embedding <=> $1::vector` |
+| `db.prepare().get()` | `await queryOne()` |
+| `db.prepare().all()` | `await query()` |
+
+**PostgreSQL client (`src/db/client.ts`):**
+
+```typescript
+import { Pool } from 'pg';
+
+const pool = new Pool({
+  connectionString: process.env.DATABASE_URL,
+  max: 20,
+});
+
+export async function query<T>(sql: string, params?: any[]): Promise<T[]>;
+export async function queryOne<T>(sql: string, params?: any[]): Promise<T | null>;
+export async function execute(sql: string, params?: any[]): Promise<QueryResult>;
+export async function transaction<T>(fn: (client: PoolClient) => Promise<T>): Promise<T>;
+```
+
+**Новые миграции:**
+
+1. `enable_pgvector` — CREATE EXTENSION vector
+2. `initial_schema` — users, conversations, messages, memory с vector(384)
+3. `add_indexes` — индексы для производительности
+4. `add_vector_index` — IVFFlat индекс для косинусного расстояния
+
+**Векторный поиск (pgvector):**
+
+```sql
+SELECT id, topic, summary,
+       1 - (embedding <=> $1::vector) as similarity
+FROM memory
+WHERE user_id = $2 AND embedding IS NOT NULL
+ORDER BY embedding <=> $1::vector
+LIMIT 5
+```
+
+**Команды запуска:**
+
+```bash
+# Только PostgreSQL (для локальной разработки)
+docker-compose up -d db
+npm run dev
+
+# Полностью в Docker (production)
+docker-compose up -d
+docker-compose logs -f app
+```
+
+**Удалённые зависимости:**
+- `better-sqlite3`
+- `sqlite-vss`
+- `@types/better-sqlite3`
+
+**Добавленные зависимости:**
+- `pg` — PostgreSQL клиент
+- `@types/pg` — TypeScript типы
+
+---
+
+#### 42. Выбор персонажа и системный промпт
+
+- Добавлена возможность выбора персонажа (Lumie/Leo)
+- Персонализированные системные промпты для каждого персонажа
+- Сохранение выбора в профиле пользователя
+
+---
+
+#### 43. UserContextManager для семантического поиска
+
+- Класс для управления пользовательскими воспоминаниями
+- Интеграция с embeddings (all-MiniLM-L6-v2)
+- Методы: `addMemory()`, `searchMemories()`, `getUserContext()`
+
+---
+
+### Статус проекта (обновлённый)
+
+| Метрика | Значение |
+|---------|----------|
+| Тестов | 126 |
+| Build | ✅ Успешно |
+| TypeCheck | ✅ Без ошибок |
+| База данных | ✅ PostgreSQL 16 + pgvector |
+| Docker | ✅ docker-compose ready |
+| Векторный поиск | ✅ pgvector IVFFlat |
+| Кроссплатформенность | ✅ Windows/macOS/Linux |
+
+---
+
 ## 2026-02-28
 
 ### Критические исправления безопасности
