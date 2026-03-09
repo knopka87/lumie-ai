@@ -10,6 +10,7 @@ declare global {
             client_id: string;
             callback: (response: { credential: string }) => void;
             auto_select?: boolean;
+            use_fedcm_for_prompt?: boolean;
           }) => void;
           prompt: (
             callback?: (notification: {
@@ -201,6 +202,7 @@ export function useAuth(): UseAuthReturn {
                 }
               },
               auto_select: false,
+              use_fedcm_for_prompt: true, // Opt-in to FedCM for Google Sign-In migration
             });
           }
         }
@@ -267,14 +269,19 @@ export function useAuth(): UseAuthReturn {
       return;
     }
 
-    // Trigger Google One Tap prompt
+    // Trigger Google One Tap prompt with FedCM support
     if (window.google?.accounts?.id) {
-      window.google.accounts.id.prompt(notification => {
-        if (notification.isNotDisplayed() || notification.isSkippedMoment()) {
-          // User dismissed or One Tap not available - they can use the button
-          console.log('Google One Tap not displayed, use the button instead');
-        }
-      });
+      try {
+        window.google.accounts.id.prompt(notification => {
+          // These methods are deprecated but still needed for non-FedCM browsers
+          if (notification?.isNotDisplayed?.() || notification?.isSkippedMoment?.()) {
+            console.log('Google One Tap not displayed, use the button instead');
+          }
+        });
+      } catch (err) {
+        // FedCM may throw errors in some browsers - graceful fallback
+        console.log('Google Sign-In prompt failed, use the button instead:', err);
+      }
     }
   }, [isDemoMode, googleClientId, setUser]);
 
