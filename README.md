@@ -19,9 +19,36 @@ Lumie AI — это интерактивный AI-репетитор для из
 
 ---
 
-## Быстрый старт (5 минут)
+## Быстрый старт
 
-### Шаг 1: Установите Node.js
+### Вариант A: Запуск через Docker (рекомендуется)
+
+Самый простой способ — запустить всё в Docker:
+
+```bash
+# 1. Клонируйте репозиторий
+git clone https://github.com/your-repo/lumie-ai.git
+cd lumie-ai
+
+# 2. Создайте .env.local с вашими ключами
+cp .env.example .env.local
+# Отредактируйте .env.local: добавьте GEMINI_API_KEY и GOOGLE_CLIENT_ID
+
+# 3. Запустите всё
+docker-compose up -d
+
+# 4. Откройте http://localhost:3000
+```
+
+Готово! PostgreSQL и приложение запустятся автоматически.
+
+---
+
+### Вариант B: Локальная разработка
+
+Для разработки с hot-reload используйте локальный Node.js + Docker PostgreSQL.
+
+#### Шаг 1: Установите Node.js
 
 Если у вас ещё нет Node.js:
 
@@ -143,6 +170,31 @@ npm run dev
 | `npm run test:run` | Запуск тестов (однократно) |
 | `npm run lint` | Проверка кода ESLint |
 | `npm run typecheck` | Проверка типов TypeScript |
+| `npm run migrate:sqlite` | Миграция данных из SQLite |
+
+---
+
+## Миграция данных из SQLite
+
+Если вы обновляетесь со старой версии Lumie AI (на SQLite), можно перенести существующие данные:
+
+```bash
+# 1. Убедитесь, что PostgreSQL запущен
+docker-compose up -d db
+
+# 2. Убедитесь, что файл tutor.db существует в корне проекта
+
+# 3. Запустите миграцию
+npm run migrate:sqlite
+```
+
+Скрипт перенесёт:
+- Пользователей и их настройки
+- Историю разговоров и сообщения
+- Память AI (включая embeddings для векторного поиска)
+- Прогресс по темам
+
+> **Примечание:** Миграция безопасна для повторного запуска — существующие данные не будут перезаписаны (`ON CONFLICT DO NOTHING`).
 
 ---
 
@@ -159,6 +211,8 @@ lumie-ai/
 │   └── db/
 │       ├── client.ts        # PostgreSQL connection pool
 │       └── migrations.ts    # Миграции базы данных
+├── scripts/
+│   └── migrate-sqlite-to-postgres.ts  # Миграция из SQLite
 ├── server.ts                # Express сервер
 ├── Dockerfile               # Docker образ приложения
 ├── docker-compose.yml       # Оркестрация сервисов
