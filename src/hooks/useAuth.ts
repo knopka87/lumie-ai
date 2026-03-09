@@ -194,18 +194,22 @@ export function useAuth(): UseAuthReturn {
 
           if (window.google?.accounts?.id && !googleInitialized.current) {
             googleInitialized.current = true;
-            // FedCM requires HTTPS, only enable on production
-            const isSecureContext = window.location.protocol === 'https:';
-            window.google.accounts.id.initialize({
+            // FedCM only works on HTTPS, disable on localhost to avoid errors
+            // eslint-disable-next-line @typescript-eslint/no-explicit-any
+            const config: any = {
               client_id: data.clientId,
-              callback: response => {
+              callback: (response: { credential: string }) => {
                 if (response.credential) {
                   handleGoogleCredential(response.credential);
                 }
               },
               auto_select: false,
-              use_fedcm_for_prompt: isSecureContext,
-            });
+            };
+            // Only enable FedCM on HTTPS to avoid localhost errors
+            if (window.location.protocol === 'https:') {
+              config.use_fedcm_for_prompt = true;
+            }
+            window.google.accounts.id.initialize(config);
           }
         }
       } catch (err) {

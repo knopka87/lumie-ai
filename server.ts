@@ -1,15 +1,16 @@
+import dotenv from "dotenv";
+// Load env BEFORE any other imports that use env variables
+dotenv.config();
+
 import express from "express";
 import { createServer as createViteServer } from "vite";
 import path from "path";
 import { fileURLToPath } from "url";
-import dotenv from "dotenv";
 import axios from "axios";
 import { OAuth2Client } from "google-auth-library";
 import { pipeline } from "@xenova/transformers";
 import { runMigrations } from "./src/db/migrations.js";
 import { query, queryOne, execute, insert } from "./src/db/client.js";
-
-dotenv.config();
 
 // =============================================================================
 // Embedding Pipeline (server-side)

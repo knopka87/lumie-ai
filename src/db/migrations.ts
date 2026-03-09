@@ -1,4 +1,4 @@
-import { pool, query, execute, queryOne } from './client.js';
+import { getPool, query, execute, queryOne } from './client.js';
 
 interface Migration {
   version: number;
@@ -42,7 +42,7 @@ export class MigrationRunner {
 
       console.log(`Running migration ${migration.version}: ${migration.name}`);
 
-      const client = await pool.connect();
+      const client = await getPool().connect();
       try {
         await client.query('BEGIN');
         await migration.up();
@@ -80,7 +80,7 @@ export class MigrationRunner {
 
       console.log(`Rolling back migration ${version}: ${migration.name}`);
 
-      const client = await pool.connect();
+      const client = await getPool().connect();
       try {
         await client.query('BEGIN');
         await migration.down();
