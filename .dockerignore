@@ -5,7 +5,6 @@ dist
 *.md
 *.db
 .env
-.env.local
 .DS_Store
 coverage
 .vscode
