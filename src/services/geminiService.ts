@@ -1,7 +1,29 @@
 import { GoogleGenAI, Modality, Type } from '@google/genai';
 import { pipeline } from '@xenova/transformers';
 
-const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY || '' });
+// Lazy initialization - API key is fetched from server
+let ai: GoogleGenAI | null = null;
+let apiKeyPromise: Promise<string> | null = null;
+
+async function getApiKey(): Promise<string> {
+  if (!apiKeyPromise) {
+    apiKeyPromise = fetch('/api/config/live-api-key')
+      .then(res => {
+        if (!res.ok) throw new Error('Failed to fetch API key');
+        return res.json();
+      })
+      .then(data => data.key);
+  }
+  return apiKeyPromise;
+}
+
+async function getAI(): Promise<GoogleGenAI> {
+  if (!ai) {
+    const apiKey = await getApiKey();
+    ai = new GoogleGenAI({ apiKey });
+  }
+  return ai;
+}
 
 // Local embedding pipeline
 let embeddingPipeline: any = null;
@@ -90,7 +112,8 @@ export async function generateEmbedding(text: string) {
 }
 
 export async function extractFacts(text: string) {
-  const response = await ai.models.generateContent({
+  const aiClient = await getAI();
+  const response = await aiClient.models.generateContent({
     model: 'gemini-3-flash-preview',
     contents: [
       {
@@ -175,7 +198,8 @@ export async function generateTutorResponse(
           },
         ];
 
-  const response = await ai.models.generateContent({
+  const aiClient = await getAI();
+  const response = await aiClient.models.generateContent({
     model: 'gemini-3-flash-preview',
     contents,
     config: {
@@ -212,7 +236,8 @@ export async function generateTutorResponseStream(
           },
         ];
 
-  return await ai.models.generateContentStream({
+  const aiClient = await getAI();
+  return await aiClient.models.generateContentStream({
     model: 'gemini-3-flash-preview',
     contents,
     config: {
@@ -280,7 +305,8 @@ export async function generateSpeech(text: string, voice: string = 'lumie') {
   try {
     const voiceName = voice === 'leo' ? 'Charon' : 'Kore';
 
-    const response = await ai.models.generateContent({
+    const aiClient = await getAI();
+    const response = await aiClient.models.generateContent({
       model: 'gemini-2.5-flash-preview-tts',
       contents: [{ parts: [{ text }] }],
       config: {
@@ -321,7 +347,8 @@ export async function generateLessonContent(topic: any, userContext: any) {
     "exercises": [{ "question": "...", "options": ["...", "..."], "answer": "...", "explanation": "..." }]
   }`;
 
-  const response = await ai.models.generateContent({
+  const aiClient = await getAI();
+  const response = await aiClient.models.generateContent({
     model: 'gemini-3-flash-preview',
     contents: [{ parts: [{ text: prompt }] }],
     config: {
