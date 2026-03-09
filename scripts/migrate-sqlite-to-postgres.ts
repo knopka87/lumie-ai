@@ -7,22 +7,16 @@
  * Prerequisites:
  *   - PostgreSQL running (docker-compose up -d db)
  *   - tutor.db file exists
- *   - DATABASE_URL set in .env.local
+ *   - DATABASE_URL set in .env
  */
 
 import Database from 'better-sqlite3';
 import { Pool } from 'pg';
 import dotenv from 'dotenv';
 import path from 'path';
-import fs from 'fs';
 import { fileURLToPath } from 'url';
 
-// Try .env.local first, then .env
-if (fs.existsSync('.env.local')) {
-  dotenv.config({ path: '.env.local' });
-} else {
-  dotenv.config({ path: '.env' });
-}
+dotenv.config({ path: '.env' });
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const SQLITE_PATH = path.join(__dirname, '..', 'tutor.db');

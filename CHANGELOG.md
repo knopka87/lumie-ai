@@ -857,7 +857,7 @@ const handleGoogleCredential = async (credential: string) => {
 | `server.ts` | Новые endpoints, OAuth2Client verification |
 | `src/App.tsx` | Google Sign-In button, handleGoogleCredential |
 | `src/hooks/useAuth.ts` | Google Identity Services интеграция |
-| `.env.local` | Убран GOOGLE_CLIENT_SECRET |
+| `.env` | Убран GOOGLE_CLIENT_SECRET |
 | `.env.example` | Обновлены инструкции |
 
 **Как настроить:**
@@ -865,7 +865,7 @@ const handleGoogleCredential = async (credential: string) => {
 1. Перейти на https://console.cloud.google.com/apis/credentials
 2. Создать OAuth 2.0 Client ID (Web application)
 3. Добавить Authorized JavaScript origins: `http://localhost:3000`
-4. Скопировать Client ID в `.env.local`
+4. Скопировать Client ID в `.env`
 
 **Demo mode:**
 Если `GOOGLE_CLIENT_ID` не настроен — приложение автоматически работает в demo режиме с guest пользователем
@@ -935,7 +935,7 @@ if (errorStr.includes('429') || errorStr.includes('RESOURCE_EXHAUSTED')) {
 ### 37. Удалён HUGGINGFACE_API_KEY
 
 - Ключ нигде не использовался (артефакт от ранней версии)
-- Удалён из `.env.local` и `.env.example`
+- Удалён из `.env` и `.env.example`
 
 **Текущие переменные окружения:**
 - `GEMINI_API_KEY` — для AI (обязательно)
@@ -1004,7 +1004,7 @@ runMigrations(db);
 3. Установка зависимостей
 4. Получение Gemini API ключа
 5. Получение Google Client ID (обязательно)
-6. Настройка .env.local
+6. Настройка .env
 7. Запуск приложения
 
 **Добавлены разделы:**
