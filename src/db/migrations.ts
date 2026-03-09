@@ -236,6 +236,30 @@ export const migrations: Migration[] = [
       await execute('DROP INDEX IF EXISTS idx_memory_embedding');
     },
   },
+
+  {
+    version: 5,
+    name: 'add_messages_embedding',
+    up: async () => {
+      // Add embedding column to messages for semantic search over conversation history
+      await execute(`
+        ALTER TABLE messages ADD COLUMN IF NOT EXISTS embedding vector(384);
+      `);
+      console.log('  ✓ Embedding column added to messages');
+
+      // Create IVFFlat index for fast vector similarity search
+      await execute(`
+        CREATE INDEX IF NOT EXISTS idx_messages_embedding ON messages
+        USING ivfflat (embedding vector_cosine_ops)
+        WITH (lists = 100);
+      `);
+      console.log('  ✓ Vector index created for messages');
+    },
+    down: async () => {
+      await execute('DROP INDEX IF EXISTS idx_messages_embedding');
+      await execute('ALTER TABLE messages DROP COLUMN IF EXISTS embedding');
+    },
+  },
 ];
 
 /**

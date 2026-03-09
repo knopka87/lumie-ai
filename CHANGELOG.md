@@ -6,6 +6,94 @@
 
 ## 2026-03-09
 
+### Улучшенная система памяти AI
+
+#### 45. Расширенный поиск по памяти и истории диалогов
+
+**Проблема:**
+- Система памяти была ограничена 5 фактами
+- Отсутствовал поиск по истории диалогов
+- Пользователь получал недостаточно контекста для персонализации
+
+**Решение — объединённый семантический поиск:**
+
+```
+┌──────────────────────────────────────────────────────────────┐
+│                    /api/memory/search                        │
+│                                                              │
+│  ┌─────────────────────┐    ┌─────────────────────────────┐ │
+│  │   memory table      │    │      messages table         │ │
+│  │   LIMIT 50          │    │      LIMIT 20               │ │
+│  │   similarity > 0.25 │    │      similarity > 0.25      │ │
+│  └─────────────────────┘    └─────────────────────────────┘ │
+│                    ↓                      ↓                  │
+│              ┌────────────────────────────────────┐         │
+│              │     Объединённый результат         │         │
+│              │     отсортирован по similarity     │         │
+│              └────────────────────────────────────┘         │
+└──────────────────────────────────────────────────────────────┘
+```
+
+**Изменения:**
+
+| Файл | Описание |
+|------|----------|
+| `src/db/migrations.ts` | Миграция v5: колонка `embedding vector(384)` в messages + IVFFlat индекс |
+| `server.ts` | Endpoint `/api/messages` принимает и сохраняет embedding |
+| `server.ts` | Endpoint `/api/memory/search` ищет в memory (50) + messages (20) |
+| `src/App.tsx` | Передаёт embedding при сохранении user-сообщений |
+
+**Новые параметры:**
+
+| Параметр | Было | Стало |
+|----------|------|-------|
+| LIMIT memory | 5 | 50 |
+| LIMIT messages | — | 20 |
+| Порог similarity | 0.3 | 0.25 |
+
+**Миграция v5 (add_messages_embedding):**
+
+```sql
+-- Добавление колонки для эмбеддингов сообщений
+ALTER TABLE messages ADD COLUMN embedding vector(384);
+
+-- IVFFlat индекс для быстрого векторного поиска
+CREATE INDEX idx_messages_embedding ON messages
+  USING ivfflat (embedding vector_cosine_ops)
+  WITH (lists = 100);
+```
+
+**API изменения:**
+
+`POST /api/messages` теперь принимает опциональный `embedding`:
+```typescript
+{
+  conversation_id: string;
+  role: 'user' | 'assistant';
+  content: string;
+  type?: string;
+  embedding?: number[]; // 384 dimensions, optional
+}
+```
+
+`POST /api/memory/search` возвращает объединённые результаты:
+```typescript
+{
+  source: 'memory' | 'message';
+  id: number;
+  topic: string;
+  content: string;
+  similarity: number;
+}[]
+```
+
+**Результат:**
+- AI получает до 70 релевантных фрагментов контекста
+- Поиск работает по фактам о пользователе И по истории диалогов
+- Новые сообщения автоматически индексируются для будущего поиска
+
+---
+
 ### Миграция на PostgreSQL + Docker
 
 #### 41. Переход с SQLite на PostgreSQL с pgvector

@@ -7,9 +7,9 @@ Lumie AI — это интерактивный AI-репетитор для из
 - **Голосовое общение** — разговаривайте с AI на изучаемом языке
 - **Ultra-Fast режим** — мгновенные ответы через Gemini Live API
 - **Исправление ошибок** — AI объясняет ваши ошибки на родном языке
-- **Персонализация** — AI запоминает информацию о вас
+- **Персонализация** — AI запоминает информацию о вас и ваши разговоры
 - **Учебный план CEFR** — 250+ тем от A1 до C2
-- **Векторный поиск** — умный поиск по памяти через pgvector
+- **Расширенная память** — поиск по 50 фактам + 20 релевантным диалогам через pgvector
 
 ## Системные требования
 
@@ -30,9 +30,9 @@ Lumie AI — это интерактивный AI-репетитор для из
 git clone https://github.com/your-repo/lumie-ai.git
 cd lumie-ai
 
-# 2. Создайте .env.local с вашими ключами
-cp .env.example .env.local
-# Отредактируйте .env.local: добавьте GEMINI_API_KEY и GOOGLE_CLIENT_ID
+# 2. Создайте .env с вашими ключами
+cp .env.example .env
+# Отредактируйте .env: добавьте GEMINI_API_KEY и GOOGLE_CLIENT_ID
 
 # 3. Запустите всё
 docker-compose up -d
@@ -128,7 +128,7 @@ npm install
 
 ### Шаг 7: Настройте переменные окружения
 
-Скопируйте `.env.example` в `.env.local` и заполните:
+Скопируйте `.env.example` в `.env` и заполните:
 
 ```env
 DATABASE_URL=postgres://lumie:lumie_secret@localhost:5433/lumie
@@ -216,7 +216,7 @@ lumie-ai/
 ├── server.ts                # Express сервер
 ├── Dockerfile               # Docker образ приложения
 ├── docker-compose.yml       # Оркестрация сервисов
-└── .env.local               # Переменные окружения
+└── .env                     # Переменные окружения
 ```
 
 ---
@@ -234,7 +234,7 @@ lumie-ai/
 ## Решение проблем
 
 ### "GEMINI_API_KEY not found"
-Убедитесь, что файл `.env.local` существует и содержит ваш API ключ.
+Убедитесь, что файл `.env` существует и содержит ваш API ключ.
 
 ### "Rate limit exceeded" (429)
 Бесплатный лимит Gemini — 20 запросов в минуту. Подождите минуту или используйте платный план.
@@ -246,7 +246,7 @@ lumie-ai/
 Убедитесь, что PostgreSQL запущен: `docker-compose up -d db`
 
 ### "Port 5432 already in use"
-По умолчанию используется порт 5433 для Docker PostgreSQL. Проверьте `DATABASE_URL` в `.env.local`.
+По умолчанию используется порт 5433 для Docker PostgreSQL. Проверьте `DATABASE_URL` в `.env`.
 
 ---
 

@@ -601,7 +601,7 @@ async function startServer() {
     // Validate embedding dimension (all-MiniLM-L6-v2 produces 384)
     if (embedding.length !== 384) {
       const rows = await query(
-        "SELECT id, topic, summary FROM memory WHERE user_id = $1 ORDER BY created_at DESC LIMIT 50",
+        "SELECT 'memory' as source, id, topic, summary FROM memory WHERE user_id = $1 ORDER BY created_at DESC LIMIT 50",
         [userId]
       );
       return res.json(rows.map((row: any) => ({ ...row, similarity: 0 })));
@@ -611,26 +611,46 @@ async function startServer() {
       // Use pgvector for fast vector similarity search (cosine distance)
       const embeddingVector = toVectorString(embedding);
 
-      const results = await query<{ id: number; topic: string; summary: string; similarity: number }>(`
+      // Search memory facts (up to 50 results)
+      const memoryResults = await query<{ source: string; id: number; topic: string; content: string; similarity: number }>(`
         SELECT
+          'memory' as source,
           id,
           topic,
-          summary,
+          summary as content,
           1 - (embedding <=> $1::vector) as similarity
         FROM memory
         WHERE user_id = $2 AND embedding IS NOT NULL
         ORDER BY embedding <=> $1::vector
-        LIMIT 5
+        LIMIT 50
       `, [embeddingVector, userId]);
 
-      // Filter low similarity results
-      const filtered = results.filter(r => r.similarity > 0.3);
-      res.json(filtered);
+      // Search conversation history (up to 20 results)
+      const messageResults = await query<{ source: string; id: number; topic: string; content: string; similarity: number }>(`
+        SELECT
+          'message' as source,
+          m.id,
+          'history' as topic,
+          m.content,
+          1 - (m.embedding <=> $1::vector) as similarity
+        FROM messages m
+        JOIN conversations c ON m.conversation_id = c.id
+        WHERE c.user_id = $2 AND m.embedding IS NOT NULL
+        ORDER BY m.embedding <=> $1::vector
+        LIMIT 20
+      `, [embeddingVector, userId]);
+
+      // Combine and filter by similarity threshold
+      const combined = [...memoryResults, ...messageResults]
+        .filter(r => r.similarity > 0.25)
+        .sort((a, b) => b.similarity - a.similarity);
+
+      res.json(combined);
     } catch (e) {
       console.error("Vector search failed:", e);
       // Fallback to returning recent memories without similarity
       const rows = await query(
-        "SELECT id, topic, summary FROM memory WHERE user_id = $1 ORDER BY created_at DESC LIMIT 5",
+        "SELECT 'memory' as source, id, topic, summary FROM memory WHERE user_id = $1 ORDER BY created_at DESC LIMIT 50",
         [userId]
       );
       res.json(rows.map((row: any) => ({ ...row, similarity: 0 })));
@@ -683,7 +703,7 @@ async function startServer() {
   });
 
   app.post("/api/messages", async (req, res) => {
-    const { conversation_id, role, content, type } = req.body;
+    const { conversation_id, role, content, type, embedding } = req.body;
 
     // SECURITY: Validate input
     if (!isValidString(conversation_id, 50)) {
@@ -698,16 +718,27 @@ async function startServer() {
 
     const validatedType = (type && ALLOWED_MESSAGE_TYPES.includes(type)) ? type : 'text';
 
+    // Validate embedding if provided (all-MiniLM-L6-v2 produces 384 dimensions)
+    const hasValidEmbedding = embedding && Array.isArray(embedding) && embedding.length === 384;
+
     // Ensure conversation exists to avoid FK error
     const conv = await queryOne("SELECT id, user_id FROM conversations WHERE id = $1", [conversation_id]);
     if (!conv) {
       return res.status(404).json({ error: "Conversation not found" });
     }
 
-    await execute(
-      "INSERT INTO messages (conversation_id, role, content, type) VALUES ($1, $2, $3, $4)",
-      [conversation_id, role, content, validatedType]
-    );
+    if (hasValidEmbedding) {
+      const embeddingVector = toVectorString(embedding);
+      await execute(
+        "INSERT INTO messages (conversation_id, role, content, type, embedding) VALUES ($1, $2, $3, $4, $5::vector)",
+        [conversation_id, role, content, validatedType, embeddingVector]
+      );
+    } else {
+      await execute(
+        "INSERT INTO messages (conversation_id, role, content, type) VALUES ($1, $2, $3, $4)",
+        [conversation_id, role, content, validatedType]
+      );
+    }
     res.json({ success: true });
   });
 
