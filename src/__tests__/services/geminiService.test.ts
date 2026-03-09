@@ -46,8 +46,8 @@ describe('geminiService', () => {
       expect(TUTOR_SYSTEM_INSTRUCTION).toContain('C1');
     });
 
-    it('should mention Lumie as the tutor name', () => {
-      expect(TUTOR_SYSTEM_INSTRUCTION).toContain('Lumie');
+    it('should use persona name placeholder', () => {
+      expect(TUTOR_SYSTEM_INSTRUCTION).toContain('{{persona_name}}');
     });
 
     it('should include conversational guidelines', () => {
@@ -60,9 +60,9 @@ describe('geminiService', () => {
       expect(TUTOR_SYSTEM_INSTRUCTION).toContain('MEMORY');
     });
 
-    it('should include emotional expression guidelines', () => {
-      expect(TUTOR_SYSTEM_INSTRUCTION).toContain('EMOTIONAL');
-      expect(TUTOR_SYSTEM_INSTRUCTION).toContain('EXPRESS');
+    it('should include direct expression guidelines', () => {
+      expect(TUTOR_SYSTEM_INSTRUCTION).toContain('DIRECT');
+      expect(TUTOR_SYSTEM_INSTRUCTION).toContain('EXPRESSION');
     });
 
     it('should reference user profile fields', () => {
