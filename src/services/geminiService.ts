@@ -117,24 +117,25 @@ export async function extractFacts(text: string) {
         parts: [
           {
             text: `Extract ALL valuable information about the user from this text.
-    Be extremely thorough and preserve EVERY SINGLE detail. 
-    
+    Be extremely thorough and preserve EVERY SINGLE detail.
+
     CRITICAL RULES:
     1. NEVER summarize away specific names, ages, or relationships. If the user mentions a name, it MUST be in the extracted fact.
     2. If the user mentions multiple family members, extract each one with their name and relationship.
     3. Preserve specific preferences, hobbies, and goals exactly as stated.
-    4. If the user mentions their own name, extract it with the topic "user_name".
-    
+    4. If the user mentions their own name, extract it with topic "user_name" and text containing ONLY THE NAME (e.g., "Alex", not "The user's name is Alex").
+
     Include:
     - Personal facts (name, city, family members and their names, pets, hobbies, age, work, etc.)
     - Specific details (e.g., "Brother: Alex (likes football)", "Wife: Anna", "Son: Ivan")
     - Learning progress (topics mastered, topics struggled with, test scores)
     - Preferences (learning style, interests, goals)
-    
-    Return a JSON array of objects with "topic" and "text" fields. 
-    The "text" should be a detailed and accurate description of the fact, preserving all specific details.
+
+    Return a JSON array of objects with "topic" and "text" fields.
+    IMPORTANT: For "user_name" topic, "text" should contain ONLY the name itself (e.g., "Alex").
+    For other topics, "text" should be a concise description preserving key details.
     If no valuable information is found, return [].
-    
+
     Text:
     "${text}"`,
           },

@@ -724,11 +724,24 @@ export default function App() {
               fact.topic.toLowerCase().includes('user_name')) &&
             fact.text.length < 50
           ) {
-            console.log('Updating user name based on extracted fact:', fact.text);
+            // Extract just the name if AI returned a sentence like "The user's name is Alex"
+            let extractedName = fact.text.trim();
+            const namePatterns = [
+              /(?:name is|called|named|I'm|I am)\s+([A-Z][a-z]+)/i,
+              /^([A-Z][a-z]+)$/,
+            ];
+            for (const pattern of namePatterns) {
+              const match = extractedName.match(pattern);
+              if (match && match[1]) {
+                extractedName = match[1];
+                break;
+              }
+            }
+            console.log('Updating user name based on extracted fact:', extractedName);
             fetch('/api/user/onboard', {
               method: 'POST',
               headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify({ userId: user.id, name: fact.text }),
+              body: JSON.stringify({ userId: user.id, name: extractedName }),
             })
               .then(res => res.json())
               .then(updated => {
