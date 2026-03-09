@@ -5,10 +5,36 @@ import { fileURLToPath } from "url";
 import dotenv from "dotenv";
 import axios from "axios";
 import { OAuth2Client } from "google-auth-library";
+import { pipeline } from "@xenova/transformers";
 import { runMigrations } from "./src/db/migrations.js";
 import { query, queryOne, execute, insert } from "./src/db/client.js";
 
 dotenv.config();
+
+// =============================================================================
+// Embedding Pipeline (server-side)
+// =============================================================================
+let embeddingPipeline: any = null;
+
+async function getEmbeddingPipeline() {
+  if (!embeddingPipeline) {
+    console.log("Loading embedding model...");
+    embeddingPipeline = await pipeline("feature-extraction", "Xenova/all-MiniLM-L6-v2");
+    console.log("Embedding model loaded");
+  }
+  return embeddingPipeline;
+}
+
+async function generateEmbedding(text: string): Promise<number[] | null> {
+  try {
+    const pipe = await getEmbeddingPipeline();
+    const output = await pipe(text, { pooling: "mean", normalize: true });
+    return Array.from(output.data);
+  } catch (error) {
+    console.error("Embedding generation failed:", error);
+    return null;
+  }
+}
 
 // =============================================================================
 // SECURITY: Input Validation Helpers
@@ -548,6 +574,26 @@ async function startServer() {
 
     // Return API key for authenticated requests
     res.json({ key: apiKey });
+  });
+
+  // --- EMBEDDINGS ---
+  app.post("/api/embeddings", async (req, res) => {
+    const { text } = req.body;
+
+    if (!isValidString(text, 10000)) {
+      return res.status(400).json({ error: "Invalid text" });
+    }
+
+    try {
+      const embedding = await generateEmbedding(text);
+      if (!embedding) {
+        return res.status(500).json({ error: "Failed to generate embedding" });
+      }
+      res.json({ embedding });
+    } catch (error) {
+      console.error("Embedding endpoint error:", error);
+      res.status(500).json({ error: "Internal server error" });
+    }
   });
 
   // --- MEMORY & VECTOR SEARCH ---

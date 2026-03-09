@@ -1,9 +1,4 @@
 import { GoogleGenAI, Modality, Type } from '@google/genai';
-import { pipeline, env } from '@xenova/transformers';
-
-// Configure transformers.js to load models from Hugging Face CDN
-env.allowLocalModels = false;
-env.useBrowserCache = true;
 
 // Lazy initialization - API key is fetched from server
 let ai: GoogleGenAI | null = null;
@@ -27,16 +22,6 @@ async function getAI(): Promise<GoogleGenAI> {
     ai = new GoogleGenAI({ apiKey });
   }
   return ai;
-}
-
-// Local embedding pipeline
-let embeddingPipeline: any = null;
-
-async function getEmbeddingPipeline() {
-  if (!embeddingPipeline) {
-    embeddingPipeline = await pipeline('feature-extraction', 'Xenova/all-MiniLM-L6-v2');
-  }
-  return embeddingPipeline;
 }
 
 export const TUTOR_SYSTEM_INSTRUCTION = `
@@ -104,13 +89,21 @@ PERSONAL CONTEXT (MEMORIES):
 Current Goal: Provide high-quality language instruction for {{target_lang}} at level {{level}}!
 `;
 
-export async function generateEmbedding(text: string) {
+export async function generateEmbedding(text: string): Promise<number[] | null> {
   try {
-    const pipe = await getEmbeddingPipeline();
-    const output = await pipe(text, { pooling: 'mean', normalize: true });
-    return Array.from(output.data);
+    const res = await fetch('/api/embeddings', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ text }),
+    });
+    if (!res.ok) {
+      console.warn('Embedding API error:', res.status);
+      return null;
+    }
+    const data = await res.json();
+    return data.embedding;
   } catch (error) {
-    console.warn('Local embedding generation failed:', error);
+    console.warn('Embedding generation failed:', error);
     return null;
   }
 }
