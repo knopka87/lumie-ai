@@ -1,13 +1,12 @@
 import express from "express";
 import { createServer as createViteServer } from "vite";
-import Database from "better-sqlite3";
-import * as sqlite_vss from "sqlite-vss";
 import path from "path";
 import { fileURLToPath } from "url";
 import dotenv from "dotenv";
 import axios from "axios";
 import { OAuth2Client } from "google-auth-library";
 import { runMigrations } from "./src/db/migrations.js";
+import { query, queryOne, execute, insert } from "./src/db/client.js";
 
 dotenv.config();
 
@@ -72,77 +71,29 @@ function isAllowedOrigin(origin: string): boolean {
 }
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
-const db = new Database("tutor.db");
-db.exec("PRAGMA foreign_keys = ON;");
-
-// Load sqlite-vss extension for vector search (must be loaded before migrations)
-// Note: sqlite-vss is not supported on Windows
-let vssAvailable = false;
-try {
-  sqlite_vss.load(db);
-  vssAvailable = true;
-  console.log("sqlite-vss extension loaded successfully");
-} catch (e) {
-  console.warn("sqlite-vss not available (this is expected on Windows):", (e as Error).message);
-  console.warn("Using JavaScript fallback for vector search");
-}
-
-// Cosine similarity for JS fallback (used when sqlite-vss is not available)
-function cosineSimilarity(a: number[], b: number[]): number {
-  if (a.length !== b.length) return 0;
-  let dot = 0, normA = 0, normB = 0;
-  for (let i = 0; i < a.length; i++) {
-    dot += a[i] * b[i];
-    normA += a[i] * a[i];
-    normB += b[i] * b[i];
-  }
-  if (normA === 0 || normB === 0) return 0;
-  return dot / (Math.sqrt(normA) * Math.sqrt(normB));
-}
-
-// Run database migrations
-console.log("Running database migrations...");
-runMigrations(db);
-console.log("Database migrations complete");
 
 // Helper to ensure user exists in DB (handles cases where client has stale localStorage)
-function ensureUserExists(userId: string) {
-  const user = db.prepare("SELECT id FROM users WHERE id = ?").get(userId);
+async function ensureUserExists(userId: string) {
+  const user = await queryOne("SELECT id FROM users WHERE id = $1", [userId]);
   if (!user) {
-    db.prepare("INSERT OR IGNORE INTO users (id, name, is_onboarded) VALUES (?, ?, 0)")
-      .run(userId, 'Guest User');
+    await execute(
+      "INSERT INTO users (id, name, is_onboarded) VALUES ($1, $2, 0) ON CONFLICT (id) DO NOTHING",
+      [userId, 'Guest User']
+    );
   }
 }
 
-// Migration: Add embedding column if it doesn't exist
-try {
-  db.prepare("ALTER TABLE memory ADD COLUMN embedding BLOB").run();
-} catch (e) {
-  // Column already exists or other error
+// Convert embedding array to pgvector format string
+function toVectorString(embedding: number[]): string {
+  return `[${embedding.join(',')}]`;
 }
-try {
-  db.prepare("ALTER TABLE memory ADD COLUMN created_at DATETIME DEFAULT CURRENT_TIMESTAMP").run();
-} catch (e) {
-  // Column already exists
-}
-
-try {
-  db.prepare("ALTER TABLE users ADD COLUMN age INTEGER").run();
-} catch (e) {}
-try {
-  db.prepare("ALTER TABLE users ADD COLUMN gender TEXT").run();
-} catch (e) {}
-try {
-  db.prepare("ALTER TABLE users ADD COLUMN avatar TEXT").run();
-} catch (e) {}
-try {
-  db.prepare("ALTER TABLE users ADD COLUMN is_onboarded INTEGER DEFAULT 0").run();
-} catch (e) {}
-try {
-  db.prepare("ALTER TABLE users ADD COLUMN voice TEXT DEFAULT 'lumie'").run();
-} catch (e) {}
 
 async function startServer() {
+  // Run database migrations
+  console.log("Running database migrations...");
+  await runMigrations();
+  console.log("Database migrations complete");
+
   const app = express();
   const PORT = 3000;
 
@@ -234,11 +185,13 @@ async function startServer() {
 
     if (!code || !clientId || !clientSecret || clientSecret.includes('your_google_client_secret')) {
       // Fallback to demo user if credentials are not set
-      let user = db.prepare("SELECT * FROM users WHERE id = ?").get('user_123');
+      let user = await queryOne("SELECT * FROM users WHERE id = $1", ['user_123']);
       if (!user) {
-        db.prepare("INSERT INTO users (id, email, name) VALUES (?, ?, ?)")
-          .run('user_123', 'demo@example.com', 'Demo User');
-        user = db.prepare("SELECT * FROM users WHERE id = ?").get('user_123');
+        await execute(
+          "INSERT INTO users (id, email, name) VALUES ($1, $2, $3)",
+          ['user_123', 'demo@example.com', 'Demo User']
+        );
+        user = await queryOne("SELECT * FROM users WHERE id = $1", ['user_123']);
       }
       return sendAuthResponse(user);
     }
@@ -268,15 +221,17 @@ async function startServer() {
       }
 
       // Check if user exists, if not create
-      let user = db.prepare("SELECT * FROM users WHERE id = ?").get(googleUser.id);
+      let user = await queryOne("SELECT * FROM users WHERE id = $1", [googleUser.id]);
       if (!user) {
         // SECURITY: Sanitize user input from Google
         const sanitizedEmail = (googleUser.email || '').substring(0, 255);
         const sanitizedName = (googleUser.name || 'User').substring(0, 100);
 
-        db.prepare("INSERT INTO users (id, email, name) VALUES (?, ?, ?)")
-          .run(googleUser.id, sanitizedEmail, sanitizedName);
-        user = db.prepare("SELECT * FROM users WHERE id = ?").get(googleUser.id);
+        await execute(
+          "INSERT INTO users (id, email, name) VALUES ($1, $2, $3)",
+          [googleUser.id, sanitizedEmail, sanitizedName]
+        );
+        user = await queryOne("SELECT * FROM users WHERE id = $1", [googleUser.id]);
       }
 
       sendAuthResponse(user);
@@ -286,12 +241,14 @@ async function startServer() {
     }
   });
 
-  app.get("/api/auth/demo", (req, res) => {
-    let user = db.prepare("SELECT * FROM users WHERE id = ?").get('demo_user');
+  app.get("/api/auth/demo", async (req, res) => {
+    let user = await queryOne("SELECT * FROM users WHERE id = $1", ['demo_user']);
     if (!user) {
-      db.prepare("INSERT INTO users (id, email, name) VALUES (?, ?, ?)")
-        .run('demo_user', 'guest@example.com', 'Guest Student');
-      user = db.prepare("SELECT * FROM users WHERE id = ?").get('demo_user');
+      await execute(
+        "INSERT INTO users (id, email, name) VALUES ($1, $2, $3)",
+        ['demo_user', 'guest@example.com', 'Guest Student']
+      );
+      user = await queryOne("SELECT * FROM users WHERE id = $1", ['demo_user']);
     }
     res.json(user);
   });
@@ -308,11 +265,13 @@ async function startServer() {
 
     // If no client ID configured, fall back to demo user
     if (!clientId || clientId.includes('your_google_client_id')) {
-      let user = db.prepare("SELECT * FROM users WHERE id = ?").get('demo_user');
+      let user = await queryOne("SELECT * FROM users WHERE id = $1", ['demo_user']);
       if (!user) {
-        db.prepare("INSERT INTO users (id, email, name) VALUES (?, ?, ?)")
-          .run('demo_user', 'guest@example.com', 'Demo User');
-        user = db.prepare("SELECT * FROM users WHERE id = ?").get('demo_user');
+        await execute(
+          "INSERT INTO users (id, email, name) VALUES ($1, $2, $3)",
+          ['demo_user', 'guest@example.com', 'Demo User']
+        );
+        user = await queryOne("SELECT * FROM users WHERE id = $1", ['demo_user']);
       }
       return res.json(user);
     }
@@ -337,18 +296,20 @@ async function startServer() {
       const avatar = payload.picture || null;
 
       // Check if user exists
-      let user: any = db.prepare("SELECT * FROM users WHERE id = ?").get(googleId);
+      let user: any = await queryOne("SELECT * FROM users WHERE id = $1", [googleId]);
 
       if (!user) {
         // Create new user
-        db.prepare("INSERT INTO users (id, email, name, avatar) VALUES (?, ?, ?, ?)")
-          .run(googleId, email, name, avatar);
-        user = db.prepare("SELECT * FROM users WHERE id = ?").get(googleId);
+        await execute(
+          "INSERT INTO users (id, email, name, avatar) VALUES ($1, $2, $3, $4)",
+          [googleId, email, name, avatar]
+        );
+        user = await queryOne("SELECT * FROM users WHERE id = $1", [googleId]);
       } else {
         // Update existing user's avatar if they don't have one
         if (!user.avatar && avatar) {
-          db.prepare("UPDATE users SET avatar = ? WHERE id = ?").run(avatar, googleId);
-          user = db.prepare("SELECT * FROM users WHERE id = ?").get(googleId);
+          await execute("UPDATE users SET avatar = $1 WHERE id = $2", [avatar, googleId]);
+          user = await queryOne("SELECT * FROM users WHERE id = $1", [googleId]);
         }
       }
 
@@ -371,7 +332,7 @@ async function startServer() {
   });
 
   // --- USER & PROGRESS ROUTES ---
-  app.post("/api/user/onboard", (req, res) => {
+  app.post("/api/user/onboard", async (req, res) => {
     const { userId, name, age, gender, nativeLang, targetLang, avatar } = req.body;
 
     // SECURITY: Validate all input fields
@@ -388,52 +349,52 @@ async function startServer() {
     const validatedAvatar = (avatar && isValidUrl(avatar)) ? avatar.substring(0, 500) : null;
 
     // Check if user exists
-    const existingUser = db.prepare("SELECT * FROM users WHERE id = ?").get(userId);
+    const existingUser = await queryOne("SELECT * FROM users WHERE id = $1", [userId]);
 
     if (existingUser) {
-      db.prepare(`
+      await execute(`
         UPDATE users
         SET
-          name = COALESCE(?, name),
-          age = COALESCE(?, age),
-          gender = COALESCE(?, gender),
-          native_lang = COALESCE(?, native_lang),
-          target_lang = COALESCE(?, target_lang),
-          avatar = COALESCE(?, avatar),
-          is_onboarded = CASE WHEN ? IS NOT NULL THEN 1 ELSE is_onboarded END
-        WHERE id = ?
-      `).run(validatedName, validatedAge, validatedGender, validatedNativeLang, validatedTargetLang, validatedAvatar, validatedName, userId);
+          name = COALESCE($1, name),
+          age = COALESCE($2, age),
+          gender = COALESCE($3, gender),
+          native_lang = COALESCE($4, native_lang),
+          target_lang = COALESCE($5, target_lang),
+          avatar = COALESCE($6, avatar),
+          is_onboarded = CASE WHEN $1 IS NOT NULL THEN 1 ELSE is_onboarded END
+        WHERE id = $7
+      `, [validatedName, validatedAge, validatedGender, validatedNativeLang, validatedTargetLang, validatedAvatar, userId]);
     } else {
       // For demo_user or cases where OAuth didn't create the record yet
-      db.prepare(`
+      await execute(`
         INSERT INTO users (id, name, age, gender, native_lang, target_lang, avatar, is_onboarded)
-        VALUES (?, ?, ?, ?, ?, ?, ?, 1)
-      `).run(userId, validatedName || 'User', validatedAge, validatedGender, validatedNativeLang || 'Russian', validatedTargetLang || 'English', validatedAvatar);
+        VALUES ($1, $2, $3, $4, $5, $6, $7, 1)
+      `, [userId, validatedName || 'User', validatedAge, validatedGender, validatedNativeLang || 'Russian', validatedTargetLang || 'English', validatedAvatar]);
     }
 
-    const user = db.prepare("SELECT * FROM users WHERE id = ?").get(userId);
+    const user = await queryOne("SELECT * FROM users WHERE id = $1", [userId]);
     res.json(user || { error: "Failed to retrieve user after onboarding" });
   });
 
-  app.get("/api/user/:id", (req, res) => {
+  app.get("/api/user/:id", async (req, res) => {
     // SECURITY: Validate user ID
     if (!isValidString(req.params.id, 100)) {
       return res.status(400).json({ error: "Invalid user ID" });
     }
-    const user = db.prepare("SELECT * FROM users WHERE id = ?").get(req.params.id);
+    const user = await queryOne("SELECT * FROM users WHERE id = $1", [req.params.id]);
     res.json(user || { error: "Not found" });
   });
 
-  app.get("/api/user/:id/progress", (req, res) => {
+  app.get("/api/user/:id/progress", async (req, res) => {
     // SECURITY: Validate user ID
     if (!isValidString(req.params.id, 100)) {
       return res.status(400).json({ error: "Invalid user ID" });
     }
-    const rows = db.prepare("SELECT topic_id FROM user_progress WHERE user_id = ?").all(req.params.id);
-    res.json(rows.map((r: any) => r.topic_id));
+    const rows = await query<{ topic_id: string }>("SELECT topic_id FROM user_progress WHERE user_id = $1", [req.params.id]);
+    res.json(rows.map(r => r.topic_id));
   });
 
-  app.post("/api/user/complete-topic", (req, res) => {
+  app.post("/api/user/complete-topic", async (req, res) => {
     const { userId, topicId } = req.body;
 
     // SECURITY: Validate input
@@ -444,12 +405,15 @@ async function startServer() {
       return res.status(400).json({ error: "Invalid topicId" });
     }
 
-    ensureUserExists(userId);
-    db.prepare("INSERT OR REPLACE INTO user_progress (user_id, topic_id) VALUES (?, ?)").run(userId, topicId);
+    await ensureUserExists(userId);
+    await execute(
+      "INSERT INTO user_progress (user_id, topic_id) VALUES ($1, $2) ON CONFLICT (user_id, topic_id) DO UPDATE SET completed_at = CURRENT_TIMESTAMP",
+      [userId, topicId]
+    );
     res.json({ success: true });
   });
 
-  app.post("/api/user/update-progress", (req, res) => {
+  app.post("/api/user/update-progress", async (req, res) => {
     const { userId, level, points, weakTopic } = req.body;
 
     // SECURITY: Validate input
@@ -466,17 +430,21 @@ async function startServer() {
     const validatedLevel = isValidLevel(level) ? level : null;
     const validatedPoints = (typeof points === 'number' && points >= 0) ? Math.min(points, 10000) : 0;
 
-    db.prepare("UPDATE users SET level = COALESCE(?, level), points = points + ?, last_active = CURRENT_TIMESTAMP WHERE id = ?")
-      .run(validatedLevel, validatedPoints, userId);
+    await execute(
+      "UPDATE users SET level = COALESCE($1, level), points = points + $2, last_active = CURRENT_TIMESTAMP WHERE id = $3",
+      [validatedLevel, validatedPoints, userId]
+    );
 
     if (weakTopic && isValidString(weakTopic, 100)) {
-      db.prepare("INSERT INTO memory (user_id, topic, summary) VALUES (?, ?, ?)")
-        .run(userId, weakTopic, "User struggled with this topic");
+      await execute(
+        "INSERT INTO memory (user_id, topic, summary) VALUES ($1, $2, $3)",
+        [userId, weakTopic, "User struggled with this topic"]
+      );
     }
     res.json({ success: true });
   });
 
-  app.post("/api/user/update-languages", (req, res) => {
+  app.post("/api/user/update-languages", async (req, res) => {
     const { userId, nativeLang, targetLang } = req.body;
 
     // SECURITY: Validate input
@@ -490,12 +458,14 @@ async function startServer() {
       return res.status(400).json({ error: "Invalid target language" });
     }
 
-    db.prepare("UPDATE users SET native_lang = ?, target_lang = ? WHERE id = ?")
-      .run(nativeLang, targetLang, userId);
+    await execute(
+      "UPDATE users SET native_lang = $1, target_lang = $2 WHERE id = $3",
+      [nativeLang, targetLang, userId]
+    );
     res.json({ success: true });
   });
 
-  app.post("/api/user/update", (req, res) => {
+  app.post("/api/user/update", async (req, res) => {
     const { userId, voice, name, age, gender, avatar } = req.body;
 
     if (!isValidString(userId, 100)) {
@@ -504,25 +474,26 @@ async function startServer() {
 
     const updates: string[] = [];
     const params: any[] = [];
+    let paramIndex = 1;
 
     if (voice && (voice === 'lumie' || voice === 'leo')) {
-      updates.push("voice = ?");
+      updates.push(`voice = $${paramIndex++}`);
       params.push(voice);
     }
     if (name && isValidString(name, 100)) {
-      updates.push("name = ?");
+      updates.push(`name = $${paramIndex++}`);
       params.push(name);
     }
     if (age !== undefined) {
-      updates.push("age = ?");
+      updates.push(`age = $${paramIndex++}`);
       params.push(age);
     }
     if (gender && isValidString(gender, 20)) {
-      updates.push("gender = ?");
+      updates.push(`gender = $${paramIndex++}`);
       params.push(gender);
     }
     if (avatar && isValidString(avatar, 200)) {
-      updates.push("avatar = ?");
+      updates.push(`avatar = $${paramIndex++}`);
       params.push(avatar);
     }
 
@@ -531,7 +502,7 @@ async function startServer() {
     }
 
     params.push(userId);
-    db.prepare(`UPDATE users SET ${updates.join(", ")} WHERE id = ?`).run(...params);
+    await execute(`UPDATE users SET ${updates.join(", ")} WHERE id = $${paramIndex}`, params);
     res.json({ success: true });
   });
 
@@ -541,7 +512,7 @@ async function startServer() {
   const API_KEY_RATE_LIMIT = 10; // requests per minute
   const API_KEY_RATE_WINDOW = 60000; // 1 minute in ms
 
-  app.get("/api/config/live-api-key", (req, res) => {
+  app.get("/api/config/live-api-key", async (req, res) => {
     // Get client identifier (IP or user ID from query)
     const clientId = req.query.userId as string || req.ip || 'unknown';
 
@@ -564,7 +535,7 @@ async function startServer() {
 
     // Validate user exists (basic auth check)
     if (req.query.userId) {
-      const user = db.prepare("SELECT id FROM users WHERE id = ?").get(req.query.userId);
+      const user = await queryOne("SELECT id FROM users WHERE id = $1", [req.query.userId]);
       if (!user) {
         return res.status(401).json({ error: "Unauthorized" });
       }
@@ -594,7 +565,7 @@ async function startServer() {
     const validatedTopic = isValidString(topic, 100) ? topic : 'general';
 
     // Validate embedding array (all-MiniLM-L6-v2 produces 384 dimensions)
-    let embeddingArray: number[] | null = null;
+    let embeddingVector: string | null = null;
     if (embedding && Array.isArray(embedding)) {
       // SECURITY: Validate embedding - must be 384 dimensions for our model
       if (embedding.length !== 384) {
@@ -603,31 +574,18 @@ async function startServer() {
       if (!embedding.every(v => typeof v === 'number' && isFinite(v))) {
         return res.status(400).json({ error: "Invalid embedding values" });
       }
-      embeddingArray = embedding;
+      embeddingVector = toVectorString(embedding);
     }
 
-    ensureUserExists(userId);
+    await ensureUserExists(userId);
 
-    // Insert into regular memory table
-    const result = db.prepare("INSERT INTO memory (user_id, topic, summary) VALUES (?, ?, ?)")
-      .run(userId, validatedTopic, text);
+    // Insert into memory table with embedding
+    const result = await queryOne<{ id: number }>(
+      "INSERT INTO memory (user_id, topic, summary, embedding) VALUES ($1, $2, $3, $4::vector) RETURNING id",
+      [userId, validatedTopic, text, embeddingVector]
+    );
 
-    // Insert into VSS virtual table for fast vector search
-    // Insert into VSS table if available (skip on Windows)
-    if (vssAvailable && embeddingArray && result.lastInsertRowid) {
-      try {
-        const embeddingJson = JSON.stringify(embeddingArray);
-        db.prepare("INSERT INTO vss_memory (rowid, embedding) VALUES (?, ?)").run(
-          result.lastInsertRowid,
-          embeddingJson
-        );
-      } catch (e) {
-        console.error("Failed to insert into vss_memory:", e);
-        // Don't fail the request - the memory is still saved in the regular table
-      }
-    }
-
-    res.json({ success: true, id: result.lastInsertRowid });
+    res.json({ success: true, id: result?.id });
   });
 
   app.post("/api/memory/search", async (req, res) => {
@@ -642,118 +600,44 @@ async function startServer() {
     }
     // Validate embedding dimension (all-MiniLM-L6-v2 produces 384)
     if (embedding.length !== 384) {
-      const rows = db.prepare("SELECT id, topic, summary FROM memory WHERE user_id = ? ORDER BY created_at DESC LIMIT 50").all(userId);
+      const rows = await query(
+        "SELECT id, topic, summary FROM memory WHERE user_id = $1 ORDER BY created_at DESC LIMIT 50",
+        [userId]
+      );
       return res.json(rows.map((row: any) => ({ ...row, similarity: 0 })));
     }
 
-    // Use JS fallback if VSS not available (Windows)
-    if (!vssAvailable) {
-      const rows: any[] = db.prepare("SELECT id, topic, summary, embedding FROM memory WHERE user_id = ?").all(userId);
-
-      const results = rows
-        .map(row => {
-          let similarity = 0;
-          if (row.embedding) {
-            try {
-              const storedEmbedding = JSON.parse(row.embedding);
-              if (Array.isArray(storedEmbedding) && storedEmbedding.length === 384) {
-                similarity = cosineSimilarity(embedding, storedEmbedding);
-              }
-            } catch (e) {
-              // Invalid embedding, skip
-            }
-          }
-          return {
-            id: row.id,
-            topic: row.topic,
-            summary: row.summary,
-            similarity
-          };
-        })
-        .filter(r => r.similarity > 0.3) // Filter low similarity
-        .sort((a, b) => b.similarity - a.similarity)
-        .slice(0, 50);
-
-      return res.json(results);
-    }
-
     try {
-      // Use VSS for fast vector similarity search
-      const embeddingJson = JSON.stringify(embedding);
+      // Use pgvector for fast vector similarity search (cosine distance)
+      const embeddingVector = toVectorString(embedding);
 
-      // VSS search returns rowid and distance (lower = more similar)
-      const vssResults: any[] = db.prepare(`
-         SELECT rowid, distance
-         FROM vss_memory
-         WHERE vss_search(embedding, ?)
-         LIMIT 50
-       `).all(embeddingJson);
-
-      if (vssResults.length === 0) {
-        // No vectors in VSS yet, fall back to regular query
-        const rows = db.prepare("SELECT id, topic, summary FROM memory WHERE user_id = ? ORDER BY created_at DESC LIMIT 50").all(userId);
-        return res.json(rows.map((row: any) => ({ ...row, similarity: 0 })));
-      }
-
-      // Get memory details for the found rowids, filtered by userId
-      const rowids = vssResults.map(r => r.rowid);
-      const placeholders = rowids.map(() => '?').join(',');
-
-      const memories: any[] = db.prepare(`
-        SELECT id, topic, summary
+      const results = await query<{ id: number; topic: string; summary: string; similarity: number }>(`
+        SELECT
+          id,
+          topic,
+          summary,
+          1 - (embedding <=> $1::vector) as similarity
         FROM memory
-        WHERE id IN (${placeholders}) AND user_id = ?
-      `).all(...rowids, userId);
+        WHERE user_id = $2 AND embedding IS NOT NULL
+        ORDER BY embedding <=> $1::vector
+        LIMIT 5
+      `, [embeddingVector, userId]);
 
-      // Create a map for quick lookup
-      const memoryMap = new Map(memories.map(m => [m.id, m]));
-
-      // Combine VSS results with memory data, converting distance to similarity
-      const results = vssResults
-        .filter(vss => memoryMap.has(vss.rowid))
-        .map(vss => {
-          const memory = memoryMap.get(vss.rowid)!;
-          // Convert distance to similarity (distance 0 = similarity 1)
-          // VSS uses L2 distance, so we convert with a formula
-          const similarity = 1 / (1 + vss.distance);
-          return {
-            id: memory.id,
-            topic: memory.topic,
-            summary: memory.summary,
-            similarity
-          };
-        });
-
-      res.json(results.slice(0, 5));
+      // Filter low similarity results
+      const filtered = results.filter(r => r.similarity > 0.3);
+      res.json(filtered);
     } catch (e) {
-      console.error("VSS search failed, using JS fallback:", e);
-      // Fall back to JS cosine similarity
-      const rows: any[] = db.prepare("SELECT id, topic, summary, embedding FROM memory WHERE user_id = ?").all(userId);
-
-      const results = rows
-        .map(row => {
-          let similarity = 0;
-          if (row.embedding) {
-            try {
-              const storedEmbedding = JSON.parse(row.embedding);
-              if (Array.isArray(storedEmbedding) && storedEmbedding.length === 384) {
-                similarity = cosineSimilarity(embedding, storedEmbedding);
-              }
-            } catch (parseErr) {
-              // Invalid embedding
-            }
-          }
-          return { id: row.id, topic: row.topic, summary: row.summary, similarity };
-        })
-        .filter(r => r.similarity > 0.3)
-        .sort((a, b) => b.similarity - a.similarity)
-        .slice(0, 5);
-
-      res.json(results);
+      console.error("Vector search failed:", e);
+      // Fallback to returning recent memories without similarity
+      const rows = await query(
+        "SELECT id, topic, summary FROM memory WHERE user_id = $1 ORDER BY created_at DESC LIMIT 5",
+        [userId]
+      );
+      res.json(rows.map((row: any) => ({ ...row, similarity: 0 })));
     }
   });
 
-  app.post("/api/conversations", (req, res) => {
+  app.post("/api/conversations", async (req, res) => {
     const { id, user_id, title } = req.body;
 
     // SECURITY: Validate input
@@ -766,30 +650,39 @@ async function startServer() {
 
     const validatedTitle = isValidString(title, 200) ? title : 'New Conversation';
 
-    ensureUserExists(user_id);
-    db.prepare("INSERT INTO conversations (id, user_id, title) VALUES (?, ?, ?)").run(id, user_id, validatedTitle);
+    await ensureUserExists(user_id);
+    await execute(
+      "INSERT INTO conversations (id, user_id, title) VALUES ($1, $2, $3)",
+      [id, user_id, validatedTitle]
+    );
     res.json({ success: true });
   });
 
-  app.get("/api/conversations/user/:userId", (req, res) => {
+  app.get("/api/conversations/user/:userId", async (req, res) => {
     // SECURITY: Validate input
     if (!isValidString(req.params.userId, 100)) {
       return res.status(400).json({ error: "Invalid userId" });
     }
-    const rows = db.prepare("SELECT * FROM conversations WHERE user_id = ? ORDER BY created_at DESC").all(req.params.userId);
+    const rows = await query(
+      "SELECT * FROM conversations WHERE user_id = $1 ORDER BY created_at DESC",
+      [req.params.userId]
+    );
     res.json(rows);
   });
 
-  app.get("/api/conversations/:id/messages", (req, res) => {
+  app.get("/api/conversations/:id/messages", async (req, res) => {
     // SECURITY: Validate input
     if (!isValidString(req.params.id, 50)) {
       return res.status(400).json({ error: "Invalid conversation id" });
     }
-    const rows = db.prepare("SELECT * FROM messages WHERE conversation_id = ? ORDER BY created_at ASC").all(req.params.id);
+    const rows = await query(
+      "SELECT * FROM messages WHERE conversation_id = $1 ORDER BY created_at ASC",
+      [req.params.id]
+    );
     res.json(rows);
   });
 
-  app.post("/api/messages", (req, res) => {
+  app.post("/api/messages", async (req, res) => {
     const { conversation_id, role, content, type } = req.body;
 
     // SECURITY: Validate input
@@ -806,12 +699,15 @@ async function startServer() {
     const validatedType = (type && ALLOWED_MESSAGE_TYPES.includes(type)) ? type : 'text';
 
     // Ensure conversation exists to avoid FK error
-    const conv = db.prepare("SELECT id, user_id FROM conversations WHERE id = ?").get(conversation_id);
+    const conv = await queryOne("SELECT id, user_id FROM conversations WHERE id = $1", [conversation_id]);
     if (!conv) {
       return res.status(404).json({ error: "Conversation not found" });
     }
 
-    db.prepare("INSERT INTO messages (conversation_id, role, content, type) VALUES (?, ?, ?, ?)").run(conversation_id, role, content, validatedType);
+    await execute(
+      "INSERT INTO messages (conversation_id, role, content, type) VALUES ($1, $2, $3, $4)",
+      [conversation_id, role, content, validatedType]
+    );
     res.json({ success: true });
   });
 

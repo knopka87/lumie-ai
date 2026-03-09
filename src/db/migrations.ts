@@ -1,43 +1,36 @@
-import Database from 'better-sqlite3';
+import { pool, query, execute, queryOne } from './client.js';
 
 interface Migration {
   version: number;
   name: string;
-  up: (db: Database.Database) => void;
-  down?: (db: Database.Database) => void;
+  up: () => Promise<void>;
+  down?: () => Promise<void>;
 }
 
 /**
- * Database Migration System
+ * Database Migration System for PostgreSQL
  * Tracks applied migrations and runs them in order
  */
 export class MigrationRunner {
-  private db: Database.Database;
-
-  constructor(db: Database.Database) {
-    this.db = db;
-    this.ensureMigrationTable();
-  }
-
-  private ensureMigrationTable(): void {
-    this.db.exec(`
+  private async ensureMigrationTable(): Promise<void> {
+    await execute(`
       CREATE TABLE IF NOT EXISTS _migrations (
         version INTEGER PRIMARY KEY,
         name TEXT NOT NULL,
-        applied_at DATETIME DEFAULT CURRENT_TIMESTAMP
+        applied_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP
       );
     `);
   }
 
-  getAppliedVersions(): number[] {
-    const rows = this.db.prepare('SELECT version FROM _migrations ORDER BY version').all();
-    return rows.map((r: any) => r.version);
+  async getAppliedVersions(): Promise<number[]> {
+    const rows = await query<{ version: number }>('SELECT version FROM _migrations ORDER BY version');
+    return rows.map(r => r.version);
   }
 
-  run(migrations: Migration[]): void {
-    const applied = new Set(this.getAppliedVersions());
+  async run(migrations: Migration[]): Promise<void> {
+    await this.ensureMigrationTable();
+    const applied = new Set(await this.getAppliedVersions());
 
-    // Sort migrations by version
     const sorted = [...migrations].sort((a, b) => a.version - b.version);
 
     for (const migration of sorted) {
@@ -47,24 +40,28 @@ export class MigrationRunner {
 
       console.log(`Running migration ${migration.version}: ${migration.name}`);
 
+      const client = await pool.connect();
       try {
-        this.db.transaction(() => {
-          migration.up(this.db);
-          this.db.prepare('INSERT INTO _migrations (version, name) VALUES (?, ?)').run(
-            migration.version,
-            migration.name
-          );
-        })();
+        await client.query('BEGIN');
+        await migration.up();
+        await client.query('INSERT INTO _migrations (version, name) VALUES ($1, $2)', [
+          migration.version,
+          migration.name,
+        ]);
+        await client.query('COMMIT');
         console.log(`  ✓ Migration ${migration.version} applied`);
       } catch (error) {
+        await client.query('ROLLBACK');
         console.error(`  ✗ Migration ${migration.version} failed:`, error);
         throw error;
+      } finally {
+        client.release();
       }
     }
   }
 
-  rollback(migrations: Migration[], targetVersion: number): void {
-    const applied = this.getAppliedVersions().sort((a, b) => b - a);
+  async rollback(migrations: Migration[], targetVersion: number): Promise<void> {
+    const applied = (await this.getAppliedVersions()).sort((a, b) => b - a);
 
     for (const version of applied) {
       if (version <= targetVersion) break;
@@ -81,15 +78,19 @@ export class MigrationRunner {
 
       console.log(`Rolling back migration ${version}: ${migration.name}`);
 
+      const client = await pool.connect();
       try {
-        this.db.transaction(() => {
-          migration.down!(this.db);
-          this.db.prepare('DELETE FROM _migrations WHERE version = ?').run(version);
-        })();
+        await client.query('BEGIN');
+        await migration.down();
+        await client.query('DELETE FROM _migrations WHERE version = $1', [version]);
+        await client.query('COMMIT');
         console.log(`  ✓ Migration ${version} rolled back`);
       } catch (error) {
+        await client.query('ROLLBACK');
         console.error(`  ✗ Rollback of ${version} failed:`, error);
         throw error;
+      } finally {
+        client.release();
       }
     }
   }
@@ -101,9 +102,21 @@ export class MigrationRunner {
 export const migrations: Migration[] = [
   {
     version: 1,
+    name: 'enable_pgvector',
+    up: async () => {
+      await execute('CREATE EXTENSION IF NOT EXISTS vector');
+      console.log('  ✓ pgvector extension enabled');
+    },
+    down: async () => {
+      await execute('DROP EXTENSION IF EXISTS vector');
+    },
+  },
+
+  {
+    version: 2,
     name: 'initial_schema',
-    up: db => {
-      db.exec(`
+    up: async () => {
+      await execute(`
         CREATE TABLE IF NOT EXISTS users (
           id TEXT PRIMARY KEY,
           email TEXT UNIQUE,
@@ -112,21 +125,25 @@ export const migrations: Migration[] = [
           target_lang TEXT DEFAULT 'English',
           level TEXT DEFAULT 'beginner',
           streak INTEGER DEFAULT 0,
-          last_active DATETIME,
+          last_active TIMESTAMPTZ,
           points INTEGER DEFAULT 0,
           interests TEXT,
           weak_topics TEXT,
           age INTEGER,
           gender TEXT,
           avatar TEXT,
-          is_onboarded INTEGER DEFAULT 0
+          is_onboarded INTEGER DEFAULT 0,
+          voice TEXT DEFAULT 'lumie',
+          provider TEXT DEFAULT 'gemini',
+          ollama_url TEXT,
+          ollama_model TEXT
         );
 
         CREATE TABLE IF NOT EXISTS user_progress (
           user_id TEXT,
           topic_id TEXT,
           status TEXT DEFAULT 'completed',
-          completed_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+          completed_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP,
           PRIMARY KEY (user_id, topic_id),
           FOREIGN KEY(user_id) REFERENCES users(id) ON DELETE CASCADE
         );
@@ -135,33 +152,35 @@ export const migrations: Migration[] = [
           id TEXT PRIMARY KEY,
           user_id TEXT,
           title TEXT,
-          created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+          created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP,
           FOREIGN KEY(user_id) REFERENCES users(id) ON DELETE CASCADE
         );
 
         CREATE TABLE IF NOT EXISTS messages (
-          id INTEGER PRIMARY KEY AUTOINCREMENT,
+          id SERIAL PRIMARY KEY,
           conversation_id TEXT,
           role TEXT,
           content TEXT,
           type TEXT DEFAULT 'text',
-          created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+          tokens INTEGER,
+          model TEXT,
+          created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP,
           FOREIGN KEY(conversation_id) REFERENCES conversations(id) ON DELETE CASCADE
         );
 
         CREATE TABLE IF NOT EXISTS memory (
-          id INTEGER PRIMARY KEY AUTOINCREMENT,
+          id SERIAL PRIMARY KEY,
           user_id TEXT,
           topic TEXT,
           summary TEXT,
-          embedding BLOB,
-          created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+          embedding vector(384),
+          created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP,
           FOREIGN KEY(user_id) REFERENCES users(id) ON DELETE CASCADE
         );
       `);
     },
-    down: db => {
-      db.exec(`
+    down: async () => {
+      await execute(`
         DROP TABLE IF EXISTS memory;
         DROP TABLE IF EXISTS messages;
         DROP TABLE IF EXISTS conversations;
@@ -172,119 +191,49 @@ export const migrations: Migration[] = [
   },
 
   {
-    version: 2,
+    version: 3,
     name: 'add_indexes',
-    up: db => {
-      db.exec(`
+    up: async () => {
+      await execute(`
         CREATE INDEX IF NOT EXISTS idx_conversations_user_id ON conversations(user_id);
         CREATE INDEX IF NOT EXISTS idx_conversations_created_at ON conversations(created_at);
         CREATE INDEX IF NOT EXISTS idx_messages_conversation_id ON messages(conversation_id);
         CREATE INDEX IF NOT EXISTS idx_messages_created_at ON messages(created_at);
         CREATE INDEX IF NOT EXISTS idx_memory_user_id ON memory(user_id);
+        CREATE INDEX IF NOT EXISTS idx_memory_topic ON memory(topic);
+        CREATE INDEX IF NOT EXISTS idx_memory_created_at ON memory(created_at);
         CREATE INDEX IF NOT EXISTS idx_user_progress_user_id ON user_progress(user_id);
       `);
     },
-    down: db => {
-      db.exec(`
+    down: async () => {
+      await execute(`
         DROP INDEX IF EXISTS idx_conversations_user_id;
         DROP INDEX IF EXISTS idx_conversations_created_at;
         DROP INDEX IF EXISTS idx_messages_conversation_id;
         DROP INDEX IF EXISTS idx_messages_created_at;
         DROP INDEX IF EXISTS idx_memory_user_id;
+        DROP INDEX IF EXISTS idx_memory_topic;
+        DROP INDEX IF EXISTS idx_memory_created_at;
         DROP INDEX IF EXISTS idx_user_progress_user_id;
       `);
     },
   },
 
   {
-    version: 3,
-    name: 'add_user_settings',
-    up: db => {
-      // Check if columns exist before adding
-      const tableInfo = db.prepare("PRAGMA table_info(users)").all() as any[];
-      const columns = new Set(tableInfo.map(c => c.name));
-
-      if (!columns.has('provider')) {
-        db.exec(`ALTER TABLE users ADD COLUMN provider TEXT DEFAULT 'gemini'`);
-      }
-      if (!columns.has('ollama_url')) {
-        db.exec(`ALTER TABLE users ADD COLUMN ollama_url TEXT`);
-      }
-      if (!columns.has('ollama_model')) {
-        db.exec(`ALTER TABLE users ADD COLUMN ollama_model TEXT`);
-      }
-    },
-    down: db => {
-      // SQLite doesn't support DROP COLUMN in older versions
-      // Would need to recreate table
-      console.warn('Rollback of user_settings migration requires table recreation');
-    },
-  },
-
-  {
     version: 4,
-    name: 'add_message_metadata',
-    up: db => {
-      const tableInfo = db.prepare("PRAGMA table_info(messages)").all() as any[];
-      const columns = new Set(tableInfo.map(c => c.name));
-
-      if (!columns.has('tokens')) {
-        db.exec(`ALTER TABLE messages ADD COLUMN tokens INTEGER`);
-      }
-      if (!columns.has('model')) {
-        db.exec(`ALTER TABLE messages ADD COLUMN model TEXT`);
-      }
-    },
-  },
-
-  {
-    version: 5,
-    name: 'add_memory_indexes_for_search',
-    up: db => {
-      db.exec(`
-        CREATE INDEX IF NOT EXISTS idx_memory_topic ON memory(topic);
-        CREATE INDEX IF NOT EXISTS idx_memory_created_at ON memory(created_at);
+    name: 'add_vector_index',
+    up: async () => {
+      // Create an IVFFlat index for fast approximate nearest neighbor search
+      // Using cosine distance operator <=>
+      await execute(`
+        CREATE INDEX IF NOT EXISTS idx_memory_embedding ON memory
+        USING ivfflat (embedding vector_cosine_ops)
+        WITH (lists = 100);
       `);
+      console.log('  ✓ Vector index created');
     },
-    down: db => {
-      db.exec(`
-        DROP INDEX IF EXISTS idx_memory_topic;
-        DROP INDEX IF EXISTS idx_memory_created_at;
-      `);
-    },
-  },
-
-  {
-    version: 6,
-    name: 'add_vss_memory_table',
-    up: db => {
-      // Note: sqlite-vss extension must be loaded before this migration runs
-      // The virtual table uses 384-dimensional embeddings (all-MiniLM-L6-v2)
-      try {
-        // Check if VSS extension is loaded
-        const vssLoaded = db.prepare("SELECT * FROM pragma_module_list WHERE name = 'vss0'").get();
-
-        if (vssLoaded) {
-          db.exec(`
-            CREATE VIRTUAL TABLE IF NOT EXISTS vss_memory USING vss0(
-              embedding(384)
-            );
-          `);
-          console.log('  ✓ VSS virtual table created');
-        } else {
-          console.warn('  ⚠ sqlite-vss extension not loaded, skipping vss_memory table');
-        }
-      } catch (e) {
-        // VSS might not be available on all systems
-        console.warn('  ⚠ Could not create vss_memory table:', e);
-      }
-    },
-    down: db => {
-      try {
-        db.exec(`DROP TABLE IF EXISTS vss_memory`);
-      } catch (e) {
-        console.warn('Could not drop vss_memory table:', e);
-      }
+    down: async () => {
+      await execute('DROP INDEX IF EXISTS idx_memory_embedding');
     },
   },
 ];
@@ -292,7 +241,7 @@ export const migrations: Migration[] = [
 /**
  * Run all pending migrations
  */
-export function runMigrations(db: Database.Database): void {
-  const runner = new MigrationRunner(db);
-  runner.run(migrations);
+export async function runMigrations(): Promise<void> {
+  const runner = new MigrationRunner();
+  await runner.run(migrations);
 }
