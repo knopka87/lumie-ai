@@ -1,5 +1,3 @@
-version: '3.8'
-
 services:
   db:
     image: pgvector/pgvector:pg16
@@ -17,6 +15,8 @@ services:
       interval: 5s
       timeout: 5s
       retries: 5
+    networks:
+      - lumie-network
 
   app:
     build: .
@@ -24,6 +24,8 @@ services:
     depends_on:
       db:
         condition: service_healthy
+    networks:
+      - lumie-network
     environment:
       DATABASE_URL: postgres://lumie:${DB_PASSWORD:-lumie_secret}@db:5432/lumie
       GEMINI_API_KEY: ${GEMINI_API_KEY}
@@ -36,3 +38,7 @@ services:
 
 volumes:
   pgdata:
+
+networks:
+  lumie-network:
+    driver: bridge

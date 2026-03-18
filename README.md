@@ -13,15 +13,12 @@ Lumie AI — это интерактивный AI-репетитор для из
 
 ## Системные требования
 
-- **Node.js** 18+
-- **Docker** и **Docker Compose** (для PostgreSQL)
+- **Docker** и **Docker Compose**
 - **Windows**, **macOS**, **Linux** — полная поддержка
 
 ---
 
 ## Установка Docker
-
-Docker нужен для запуска PostgreSQL с pgvector.
 
 ### macOS
 
@@ -61,61 +58,14 @@ newgrp docker
 
 ```bash
 docker --version          # Docker version 24.x или выше
-docker-compose --version  # Docker Compose version 2.x или выше
+docker compose version    # Docker Compose version 2.x или выше
 ```
 
 ---
 
 ## Быстрый старт
 
-### Вариант A: Запуск через Docker (рекомендуется)
-
-Самый простой способ — запустить всё в Docker:
-
-```bash
-# 1. Клонируйте репозиторий
-git clone https://github.com/your-repo/lumie-ai.git
-cd lumie-ai
-
-# 2. Создайте .env с вашими ключами
-cp .env.example .env
-# Отредактируйте .env: добавьте GEMINI_API_KEY и GOOGLE_CLIENT_ID
-
-# 3. Запустите всё
-docker-compose up -d
-
-# 4. Откройте http://localhost:3000
-```
-
-Готово! PostgreSQL и приложение запустятся автоматически.
-
----
-
-### Вариант B: Локальная разработка
-
-Для разработки с hot-reload используйте локальный Node.js + Docker PostgreSQL.
-
-#### Шаг 1: Установите Node.js
-
-Если у вас ещё нет Node.js:
-
-**macOS:**
-```bash
-brew install node
-```
-
-**Windows:**
-Скачайте и установите с https://nodejs.org (выберите LTS версию)
-
-**Проверьте установку:**
-```bash
-node --version   # должно показать v18 или выше
-npm --version    # должно показать 9 или выше
-```
-
----
-
-### Шаг 2: Скачайте проект
+### Шаг 1: Скачайте проект
 
 ```bash
 git clone https://github.com/your-repo/lumie-ai.git
@@ -126,27 +76,7 @@ cd lumie-ai
 
 ---
 
-### Шаг 3: Запустите PostgreSQL
-
-```bash
-docker-compose up -d db
-```
-
-Это запустит PostgreSQL 16 с pgvector на порту 5433.
-
----
-
-### Шаг 4: Установите зависимости
-
-```bash
-npm install
-```
-
-Подождите пока установятся все пакеты (может занять 1-2 минуты).
-
----
-
-### Шаг 5: Получите Gemini API ключ
+### Шаг 2: Получите Gemini API ключ
 
 1. Откройте https://aistudio.google.com/apikey
 2. Нажмите **"Create API Key"**
@@ -154,7 +84,7 @@ npm install
 
 ---
 
-### Шаг 6: Получите Google Client ID
+### Шаг 3: Получите Google Client ID
 
 1. Перейдите на https://console.cloud.google.com/apis/credentials
 2. Нажмите **"Create Credentials"** → **"OAuth client ID"**
@@ -173,12 +103,15 @@ npm install
 
 ---
 
-### Шаг 7: Настройте переменные окружения
+### Шаг 4: Настройте переменные окружения
 
 Скопируйте `.env.example` в `.env` и заполните:
 
+```bash
+cp .env.example .env
+```
+
 ```env
-DATABASE_URL=postgres://lumie:lumie_secret@localhost:5433/lumie
 GEMINI_API_KEY="AIzaSy...ваш_ключ_здесь..."
 GOOGLE_CLIENT_ID="123456789-abc.apps.googleusercontent.com"
 APP_URL="http://localhost:3000"
@@ -186,10 +119,10 @@ APP_URL="http://localhost:3000"
 
 ---
 
-### Шаг 8: Запустите приложение
+### Шаг 5: Запустите приложение
 
 ```bash
-npm run dev
+docker compose up -d
 ```
 
 Откройте в браузере: **http://localhost:3000**
@@ -207,17 +140,15 @@ npm run dev
 
 ## Команды
 
-| Команда | Описание |
-|---------|----------|
-| `docker-compose up -d db` | Запуск PostgreSQL |
-| `docker-compose up -d` | Запуск всего в Docker |
-| `npm run dev` | Запуск в режиме разработки |
-| `npm run build` | Сборка для продакшена |
-| `npm run test` | Запуск тестов (watch mode) |
-| `npm run test:run` | Запуск тестов (однократно) |
-| `npm run lint` | Проверка кода ESLint |
-| `npm run typecheck` | Проверка типов TypeScript |
-| `npm run migrate:sqlite` | Миграция данных из SQLite |
+| Команда                      | Описание                    |
+|------------------------------|-----------------------------|
+| `docker compose up -d`       | Запуск приложения           |
+| `docker compose down`        | Остановка приложения        |
+| `docker compose logs -f`     | Просмотр логов              |
+| `docker compose logs -f app` | Логи только приложения      |
+| `docker compose logs -f db`  | Логи только базы данных     |
+| `docker compose restart`     | Перезапуск                  |
+| `docker compose build`       | Пересборка образа           |
 
 ---
 
@@ -226,13 +157,14 @@ npm run dev
 Если вы обновляетесь со старой версии Lumie AI (на SQLite), можно перенести существующие данные:
 
 ```bash
-# 1. Убедитесь, что PostgreSQL запущен
-docker-compose up -d db
+# 1. Убедитесь, что контейнеры запущены
+docker compose up -d
 
-# 2. Убедитесь, что файл tutor.db существует в корне проекта
+# 2. Скопируйте файл tutor.db в контейнер
+docker cp tutor.db lumie-app:/app/tutor.db
 
 # 3. Запустите миграцию
-npm run migrate:sqlite
+docker compose exec app npm run migrate:sqlite
 ```
 
 Скрипт перенесёт:
@@ -258,8 +190,6 @@ lumie-ai/
 │   └── db/
 │       ├── client.ts        # PostgreSQL connection pool
 │       └── migrations.ts    # Миграции базы данных
-├── scripts/
-│   └── migrate-sqlite-to-postgres.ts  # Миграция из SQLite
 ├── server.ts                # Express сервер
 ├── Dockerfile               # Docker образ приложения
 ├── docker-compose.yml       # Оркестрация сервисов
@@ -289,11 +219,21 @@ lumie-ai/
 ### "Microphone access denied"
 Нажмите на замок в адресной строке браузера → разрешите микрофон.
 
-### "Cannot connect to database"
-Убедитесь, что PostgreSQL запущен: `docker-compose up -d db`
+### "Cannot connect to database" / "ECONNREFUSED" / "EAI_AGAIN"
+Перезапустите контейнеры:
+```bash
+docker compose down && docker compose up -d
+```
 
-### "Port 5432 already in use"
-По умолчанию используется порт 5433 для Docker PostgreSQL. Проверьте `DATABASE_URL` в `.env`.
+Если не помогло, пересоздайте сеть:
+```bash
+docker compose down --remove-orphans
+docker network prune -f
+docker compose up -d
+```
+
+### "Port 3000 already in use"
+Остановите другое приложение на порту 3000 или измените порт в `docker-compose.yml`.
 
 ---
 
