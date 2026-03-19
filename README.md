@@ -14,6 +14,7 @@ Lumie AI — это интерактивный AI-репетитор для из
 ## Системные требования
 
 - **Docker** и **Docker Compose**
+- **Make** (опционально, но рекомендуется)
 - **Windows**, **macOS**, **Linux** — полная поддержка
 
 ---
@@ -59,6 +60,40 @@ newgrp docker
 ```bash
 docker --version          # Docker version 24.x или выше
 docker compose version    # Docker Compose version 2.x или выше
+```
+
+---
+
+## Установка Make
+
+Make используется для удобного запуска команд проекта.
+
+### macOS
+
+```bash
+# Make уже установлен. Проверьте:
+make --version
+
+# Если нет, установите Xcode Command Line Tools:
+xcode-select --install
+```
+
+### Windows
+
+```bash
+# Вариант 1: Через Chocolatey
+choco install make
+
+# Вариант 2: Через winget
+winget install GnuWin32.Make
+```
+
+> **Примечание:** После установки перезапустите терминал.
+
+### Linux (Ubuntu/Debian)
+
+```bash
+sudo apt install make
 ```
 
 ---
@@ -122,6 +157,11 @@ APP_URL="http://localhost:3000"
 ### Шаг 5: Запустите приложение
 
 ```bash
+make start
+```
+
+Или без Make:
+```bash
 docker compose up -d
 ```
 
@@ -140,15 +180,22 @@ docker compose up -d
 
 ## Команды
 
-| Команда                      | Описание                    |
-|------------------------------|-----------------------------|
-| `docker compose up -d`       | Запуск приложения           |
-| `docker compose down`        | Остановка приложения        |
-| `docker compose logs -f`     | Просмотр логов              |
-| `docker compose logs -f app` | Логи только приложения      |
-| `docker compose logs -f db`  | Логи только базы данных     |
-| `docker compose restart`     | Перезапуск                  |
-| `docker compose build`       | Пересборка образа           |
+Для просмотра всех команд выполните `make` или `make help`.
+
+| Make                   | Docker Compose                                          | Описание                         |
+|------------------------|---------------------------------------------------------|----------------------------------|
+| `make start`           | `docker compose up -d`                                  | Запуск проекта                   |
+| `make stop`            | `docker compose down`                                   | Остановка проекта                |
+| `make restart`         | `docker compose restart`                                | Перезапуск проекта               |
+| `make clean`           | `docker compose down -v --remove-orphans && docker compose up -d --build` | Полная очистка и запуск |
+| `make rebuild`         | `docker compose build --no-cache && docker compose up -d` | Пересборка образа              |
+| `make logs`            | `docker compose logs -f`                                | Логи всех сервисов               |
+| `make logs-app`        | `docker compose logs -f app`                            | Логи приложения                  |
+| `make logs-db`         | `docker compose logs -f db`                             | Логи базы данных                 |
+| `make status`          | `docker compose ps`                                     | Статус контейнеров               |
+| `make shell`           | `docker compose exec app sh`                            | Терминал в контейнере            |
+| `make shell-db`        | `docker compose exec db psql -U lumie -d lumie`         | Терминал PostgreSQL              |
+| `make migrate-sqlite`  | см. раздел "Миграция из SQLite"                         | Миграция данных из SQLite        |
 
 ---
 
@@ -157,13 +204,14 @@ docker compose up -d
 Если вы обновляетесь со старой версии Lumie AI (на SQLite), можно перенести существующие данные:
 
 ```bash
-# 1. Убедитесь, что контейнеры запущены
+# Убедитесь, что файл tutor.db находится в корне проекта
+make migrate-sqlite
+```
+
+Или вручную:
+```bash
 docker compose up -d
-
-# 2. Скопируйте файл tutor.db в контейнер
 docker cp tutor.db lumie-app:/app/tutor.db
-
-# 3. Запустите миграцию
 docker compose exec app npm run migrate:sqlite
 ```
 
@@ -193,6 +241,7 @@ lumie-ai/
 ├── server.ts                # Express сервер
 ├── Dockerfile               # Docker образ приложения
 ├── docker-compose.yml       # Оркестрация сервисов
+├── Makefile                 # Команды для управления проектом
 └── .env                     # Переменные окружения
 ```
 
@@ -222,14 +271,12 @@ lumie-ai/
 ### "Cannot connect to database" / "ECONNREFUSED" / "EAI_AGAIN"
 Перезапустите контейнеры:
 ```bash
-docker compose down && docker compose up -d
+make restart
 ```
 
-Если не помогло, пересоздайте сеть:
+Если не помогло, выполните полную очистку:
 ```bash
-docker compose down --remove-orphans
-docker network prune -f
-docker compose up -d
+make clean
 ```
 
 ### "Port 3000 already in use"
