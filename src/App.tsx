@@ -1476,10 +1476,7 @@ export default function App() {
               </button>
             ) : (
               /* Native Google button for HTTP (localhost) - avoids FedCM errors */
-              <div
-                ref={googleButtonRef}
-                className="flex items-center justify-center"
-              />
+              <div ref={googleButtonRef} className="flex items-center justify-center" />
             )}
 
             <button
